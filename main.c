@@ -1,50 +1,57 @@
 #include <libdragon.h>
 #include "prime.h"
+#include "trigger.h"
+#include "xact_critical_section.h"
 
-// (gcc seems to auto-handle delay-slots here)
-#define T(num) "beq $zero, $zero, 1f\n syscall "#num"\n 1:\n"
+void prefill_icache() {
+    // Check the memory map to ensure that these are really the beginning and
+    // end of the code which will be executed during the test.
+    uint32_t code_start_addr = (uint32_t)(void*)&prefill_icache;
+    uint32_t code_end_addr = (uint32_t)(void*)&dummy_function_end;
+    code_start_addr &= ~15;
+    code_end_addr = (code_end_addr + 15) & ~15;
+    assert(code_end_addr - code_start_addr < 16 * 1024);
+    for(uint32_t a = code_start_addr; a < code_end_addr; a += 32){
+        // Fill icache
+        asm("\tcache %0,(%1)\n"::"i"(0x14), "r"(a));
+    }
+}
 
-__attribute__ ((always_inline))
-inline void trap_pattern() { asm volatile (
-    T(0x20) T(0x21) T(0x22) T(0x23) T(0x24) T(0x25) T(0x26) T(0x27)
-    T(0x28) T(0x29) T(0x2A) T(0x2B) T(0x2C) T(0x2D) T(0x2E) T(0x2F)
-    T(0x30) T(0x31) T(0x32) T(0x33) T(0x34) T(0x35) T(0x36) T(0x37)
-    T(0x38) T(0x39) T(0x3A) T(0x3B) T(0x3C) T(0x3D) T(0x3E) T(0x3F)
-    T(0x40) T(0x41) T(0x42) T(0x43) T(0x44) T(0x45) T(0x46) T(0x47)
-    T(0x48) T(0x49) T(0x4A) T(0x4B) T(0x4C) T(0x4D) T(0x4E) T(0x4F)
-    T(0x50) T(0x51) T(0x52) T(0x53) T(0x54) T(0x55) T(0x56) T(0x57)
-    T(0x58) T(0x59) T(0x5A) T(0x5B) T(0x5C) T(0x5D) T(0x5E) T(0x5F)
-    T(0x60) T(0x61) T(0x62) T(0x63) T(0x64) T(0x65) T(0x66) T(0x67)
-    T(0x68) T(0x69) T(0x6A) T(0x6B) T(0x6C) T(0x6D) T(0x6E) T(0x6F)
-    T(0x70) T(0x71) T(0x72) T(0x73) T(0x74) T(0x75) T(0x76) T(0x77)
-    T(0x78) T(0x79) T(0x7A) T(0x7B) T(0x7C) T(0x7D) T(0x7E) T(0x7F)
-    T(0x80) T(0x81) T(0x82) T(0x83) T(0x84) T(0x85) T(0x86) T(0x87)
-    T(0x88) T(0x89) T(0x8A) T(0x8B) T(0x8C) T(0x8D) T(0x8E) T(0x8F)
-    T(0x90) T(0x91) T(0x92) T(0x93) T(0x94) T(0x95) T(0x96) T(0x97)
-    T(0x98) T(0x99) T(0x9A) T(0x9B) T(0x9C) T(0x9D) T(0x9E) T(0x9F)
-);}
-#undef T
+void run_test(uint32_t iters,
+        uint8_t device, uint8_t dir, uint32_t size, void* prime_ram,
+        uint8_t tmode, uint32_t offset){
+    debugf("\nRunning test %ld times\nPrime: dev %d dir %d size %ld\nTrigger: mode %d offset %08lX\n",
+        iters, device, dir, size, tmode, offset);
+    uint32_t* taddr = trigger_get_addr(offset);
+    prefill_icache();
+    for (uint32_t i=0; i<iters; ++i) {
+        xact_critical_section(device, dir, size, prime_ram, tmode, taddr);
+        trigger_detect(tmode, taddr);
+    }
+}
 
-int main()
-{
+int main() {
     disable_interrupts();
     debug_init_usblog();
 
-    const uint8_t device = PRIME_DEVICE_DMEM;
-    const uint8_t dir = PRIME_DIR_RDRAM2RCP;
+    const uint8_t device = PRIME_DEVICE_IMEM;
+    const uint8_t dir = PRIME_DIR_RCP2RDRAM;
     const uint32_t size = 4096;
-    uint8_t* ram = malloc_uncached(size);
+    uint8_t* prime_ram = malloc_uncached(size);
     const uint32_t pattern = 0xFFFFFFFF;
     
-    prime_init(device, dir, size, ram, pattern);
+    const uint8_t tmode = TRIGGER_DCACHE_READ;
+    const uint8_t bank = 3;
+    
+    prime_init(device, dir, size, prime_ram, pattern);
+    trigger_init_bank(bank);
     debugf("Init complete\n");
-
-    for (uint32_t frame=0; frame<1000; ++frame) {
-        prime_go(device, dir, size, ram);
-
-        #pragma GCC unroll 100
-        for(int i=0; i<100; i++) trap_pattern();
+    
+    for(uint32_t offset_pre = 0; offset_pre < 10000; ++offset_pre){
+        uint32_t offset = integer_hash(offset_pre) & 0xFFF0;
+        run_test(128, device, dir, size, prime_ram, tmode, offset);
     }
     
-    debugf("Test finished\n");
+    debugf("Gave up\n");
+    dummy_function_end();
 }
