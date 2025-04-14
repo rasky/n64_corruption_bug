@@ -36,6 +36,7 @@ void run_test(uint32_t iters,
 int main() {
     disable_interrupts();
     debug_init_usblog();
+    debugf("\033[2J\033[HInitializing...\n");
 
     const uint32_t size = 4096;
     uint8_t* prime_ram = malloc_uncached(size);
