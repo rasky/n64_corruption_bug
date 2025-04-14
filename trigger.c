@@ -107,20 +107,39 @@ uint8_t test_tmode;
 #define RES_AREA_SIZE 50
 typedef struct {
     uint32_t total;
-    uint32_t bits[32];
     uint32_t dwords[4];
     uint32_t read_area[RES_AREA_SIZE];
     uint32_t write_area[RES_AREA_SIZE];
+} res_info_t;
+
+typedef struct {
+    res_info_t info;
+    uint32_t bits[32];
 } res_clear_t;
 
 static uint32_t res_tests;
-static uint32_t res_zeros;
+static uint32_t res_failed;
 static uint32_t res_aset_total;
 static uint32_t res_dset_total;
 static uint32_t res_unknown;
+static res_info_t res_zeros;
 static res_clear_t res_aclear;
 static res_clear_t res_dclear;
 static uint32_t res_device_dir[6];
+static uint32_t res_mode[2];
+
+void record_error_info(res_info_t* ptr, uint32_t errors,
+    uint32_t* start, uint32_t* end, uint32_t* a, uint32_t dword,
+    uint8_t mode
+){
+    ptr->total += errors;
+    ptr->dwords[dword & 3] += errors;
+    uint32_t* area = (mode == TRIGGER_DCACHE_READ)
+        ? ptr->read_area : ptr->write_area;
+    uint32_t tui_offset = ((a - start) * RES_AREA_SIZE) / (end - start);
+    if(tui_offset >= RES_AREA_SIZE) tui_offset = RES_AREA_SIZE - 1;
+    area[tui_offset] += errors;
+}
 
 bool check_record_error(
     uint32_t golden, uint32_t actual,
@@ -135,17 +154,11 @@ bool check_record_error(
     uint32_t clear = corruption & golden;
     if(set == 0){
         // Bits cleared, usual case
-        clear_ptr->total += pop;
         for(int32_t i=0; i<32; ++i){
             if(corruption & 1) clear_ptr->bits[i]++;
             corruption >>= 1;
         }
-        clear_ptr->dwords[dword & 3] += pop;
-        uint32_t* area = (mode == TRIGGER_DCACHE_READ)
-            ? clear_ptr->read_area : clear_ptr->write_area;
-        uint32_t tui_offset = ((a - start) * RES_AREA_SIZE) / (end - start);
-        if(tui_offset >= RES_AREA_SIZE) tui_offset = RES_AREA_SIZE - 1;
-        area[tui_offset] += pop;
+        record_error_info(&clear_ptr->info, pop, start, end, a, dword, mode);
     }else if(clear == 0){
         // Bits set
         *set_total_ptr += pop;
@@ -176,9 +189,7 @@ void trigger_detect(uint8_t mode, uint32_t* addr){
         end = mem_area_end;
     }
     
-#ifndef REPORT_EACH
-    ++res_tests;
-#endif
+    bool errored = false;
     for(uint32_t* a = start; a < end; ){
 #ifdef REPORT_EACH
         int32_t first_wrong = -1;
@@ -193,6 +204,7 @@ void trigger_detect(uint8_t mode, uint32_t* addr){
             uint32_t golden = __integer_hash((uint32_t)a);
             uint32_t actual = *a;
             if(golden != actual){
+                errored = true;
 #ifdef REPORT_EACH
                 if(first_wrong < 0){
                     first_wrong = dword;
@@ -224,7 +236,7 @@ void trigger_detect(uint8_t mode, uint32_t* addr){
                 }
 #else
                 if(actual == 0){
-                    ++res_zeros;
+                    record_error_info(&res_zeros, 1, start, end, a, dword, mode);
                 }else if(check_record_error(golden, actual,
                     &res_dset_total, &res_dclear,
                     start, end, a, dword, mode)){
@@ -239,6 +251,7 @@ void trigger_detect(uint8_t mode, uint32_t* addr){
                 uint32_t device_dir = (test_device << 1) | test_dir;
                 if(device_dir >= 6) device_dir = 5;
                 ++res_device_dir[device_dir];
+                ++res_mode[mode & 1];
 #endif
                 *a = golden; // fix for next iter
             }
@@ -267,6 +280,10 @@ void trigger_detect(uint8_t mode, uint32_t* addr){
         }
 #endif
     }
+#ifndef REPORT_EACH
+    ++res_tests;
+    if(errored) ++res_failed;
+#endif
 }
 
 uint32_t max_reduce(uint32_t* data, uint32_t size){
@@ -283,17 +300,53 @@ void tui_horiz_hm(char* buf, uint32_t value, uint32_t mx){
         thresh = value * 32 / mx;
     }
     for(int32_t i=0; i<32; ++i) buf[i] = (i <= thresh) ? '=' : ' ';
+    buf[32] = '\0';
 }
 
-#define TUI_VERT_HM_HEIGHT 8
-
-void tui_vert_hm(char* buf, uint32_t* data, uint32_t mx, int32_t pixel){
-    for(int32_t i=0; i<32; ++i){
+void tui_vert_hm(char* buf, uint32_t* data, uint32_t mx,
+    int32_t row, uint32_t height, uint32_t width
+){
+    for(int32_t i=0; i<width; ++i){
         int32_t thresh = -1;
         if(mx > 0 && data[i] > 0){
-            thresh = data[i] * TUI_VERT_HM_HEIGHT / mx;
+            thresh = data[i] * height / mx;
         }
-        buf[i] = ((TUI_VERT_HM_HEIGHT - 1 - pixel) <= thresh) ? '|' : ' ';
+        buf[i] = ((int32_t)(height - 1 - row) <= thresh) ? '|' : ' ';
+    }
+    buf[width] = '\0';
+}
+
+void tui_dual_heatmap(
+    uint32_t* adata, uint32_t* ddata,
+    uint32_t height, uint32_t width,
+    const char* description, bool horizontal
+) {
+    char abuf[51];
+    char dbuf[51];
+    uint32_t ndata = horizontal ? height : width;
+    uint32_t amax = max_reduce(adata, ndata);
+    uint32_t dmax = max_reduce(ddata, ndata);
+    debugf(
+        "                                                     |\n"
+        "%-52s | %-52s\n", description, description);
+    for(int32_t row=0; row<height; ++row){
+        if(horizontal){
+            tui_horiz_hm(abuf, adata[row], amax);
+            tui_horiz_hm(dbuf, ddata[row], dmax);
+            debugf("      %ld %s %8ld    |       %ld  %s %8ld\n",
+                row, abuf, adata[row],
+                row, dbuf, ddata[row]);
+        }else{
+            tui_vert_hm(abuf, adata, amax, row, height, width);
+            tui_vert_hm(dbuf, ddata, dmax, row, height, width);
+            if(row == 0 && width == 32){
+                debugf("  %8ld%s           |   %8ld%s\n", amax, abuf, dmax, dbuf);
+            }else{
+                int padcols = (52 - width) >> 1;
+                debugf("%*s%s%*s | %*s%s\n",
+                    padcols, "", abuf, padcols, "", padcols, "", dbuf);
+            }
+        }
     }
 }
 
@@ -301,49 +354,63 @@ void trigger_tui_render() {
     debugf(
         //"\033[2J\033[H"
         "\033[H"
-        "N64 Corruption Bug TUI by Sauraen\n"
-        "Based on previous work by korgeaux, Rasky, HailToDodongo\n\n"
-        "%8ld tests | %8ld zero dwords | %8ld unknown corruptions\n\n"
-        "     ADDRESS BIT CLEARS   (%4ld address bit sets)   |"
-        "        DATA BIT CLEARS   (%4ld data bit sets)\n"
-        "                                                    |\n",
-        res_tests, res_zeros, res_unknown,
+        "N64 Corruption Bug TUI by Sauraen; based on previous work by korgeaux, Rasky, HailToDodongo\n\n"
+        "%8ld tests  %8ld corrupted, %8ld not  %8ld unknown corruptions\n\n"
+        "     ADDRESS BIT CLEARS   (%4ld address bit sets)    |"
+        "        DATA BIT CLEARS   (%4ld data bit sets)\n",
+        res_tests, res_failed, res_tests - res_failed, res_unknown,
         res_aset_total, res_dset_total);
-    char abuf[33];
-    char dbuf[33];
-    abuf[32] = '\0';
-    dbuf[32] = '\0';
-    uint32_t amax, dmax;
     
-    amax = max_reduce(res_aclear.bits, 32);
-    dmax = max_reduce(res_dclear.bits, 32);
+    tui_dual_heatmap(res_aclear.bits, res_dclear.bits, 8, 32,
+        "Heatmap over bits:", false);
     debugf(
-        "Heatmap over bits:                                  |"
-        " Heatmap over bits:\n");
-    for(int32_t pixel=0; pixel<TUI_VERT_HM_HEIGHT; ++pixel){
-        tui_vert_hm(abuf, res_aclear.bits, amax, pixel);
-        tui_vert_hm(dbuf, res_dclear.bits, dmax, pixel);
-        if(pixel == 0){
-            debugf("%8ld%s            | %8ld%s\n", amax, abuf, dmax, dbuf);
-        }else{
-            debugf("        %s            |         %s\n", abuf, dbuf);
-        }
-    }
-    debugf(
-        "        33222222222211111111110000000000            |"
-        "         33222222222211111111110000000000\n"
-        "        10987654321098765432109876543210            |"
-        "         10987654321098765432109876543210\n"
-        "                                                    |\n"
-        "Heatmap over dwords of cacheline:                   |"
-        " Heatmap over dwords of cacheline:\n");
-    amax = max_reduce(res_aclear.dwords, 4);
-    dmax = max_reduce(res_dclear.dwords, 4);
-    for(int32_t dword=0; dword<4; ++dword){
-        tui_horiz_hm(abuf, res_aclear.dwords[dword], amax);
-        tui_horiz_hm(dbuf, res_dclear.dwords[dword], dmax);
-        debugf("      %ld %s %8ld   |       %ld  %s %8ld\n",
-            dword, abuf, res_aclear.dwords[dword],
-            dword, dbuf, res_dclear.dwords[dword]);
+        "          33222222222211111111110000000000           |"
+        "           33222222222211111111110000000000\n"
+        "          10987654321098765432109876543210           |"
+        "           10987654321098765432109876543210\n");
+    tui_dual_heatmap(res_aclear.info.dwords, res_dclear.info.dwords, 4, 32,
+        "Heatmap over dwords of cacheline:", true);
+    tui_dual_heatmap(res_aclear.info.read_area, res_dclear.info.read_area, 4, 50,
+        "Heatmap over buffer for reads:", false);
+    /*
+    tui_dual_heatmap(res_aclear.info.write_area, res_dclear.info.write_area, 4, 50,
+        "Heatmap over most of RDRAM for writes:", false);
+    */
+    debugf("\n\n"
+        "            ZERO WORDS (%8ld total)              |"
+        "                  BY PRIME METHOD\n"
+        "                                                     |\n"
+        "Heatmap over dwords of cacheline:                    |"
+        "                  +------------+------------+\n",
+        res_zeros.total);
+    {
+        char buf[51];
+        uint32_t mx = max_reduce(res_zeros.dwords, 4);
+        tui_horiz_hm(buf, res_zeros.dwords[0], mx);
+        debugf("      0 %s %8ld    |                  | RDRAM->RCP | RCP->RDRAM |\n",
+            buf, res_zeros.dwords[0]);
+        tui_horiz_hm(buf, res_zeros.dwords[1], mx);
+        debugf("      1 %s %8ld    |     +------------+------------+------------+\n",
+            buf, res_zeros.dwords[1]);
+        tui_horiz_hm(buf, res_zeros.dwords[2], mx);
+        debugf("      2 %s %8ld    |     | RSP DMEM   | %10ld | %10ld |\n",
+            buf, res_zeros.dwords[2], res_device_dir[0], res_device_dir[1]);
+        tui_horiz_hm(buf, res_zeros.dwords[3], mx);
+        debugf("      3 %s %8ld    |     | RSP IMEM   | %10ld | %10ld |\n"
+            "                                                     |"
+            "     | Cart \"ROM\" | %10ld | %10ld |\n"
+            "Heatmap over buffer for reads:                       |"
+            "     +------------+------------+------------+\n",
+            buf, res_zeros.dwords[3], res_device_dir[2], res_device_dir[3],
+            res_device_dir[4], res_device_dir[5]);
+        mx = max_reduce(res_zeros.read_area, 4);
+        tui_vert_hm(buf, res_zeros.read_area, mx, 0, 4, 50);
+        debugf(" %s  |\n", buf);
+        tui_vert_hm(buf, res_zeros.read_area, mx, 1, 4, 50);
+        debugf(" %s  |                  BY TRIGGER MODE\n", buf);
+        tui_vert_hm(buf, res_zeros.read_area, mx, 2, 4, 50);
+        debugf(" %s  |               DCACHE read  %8ld\n", buf, res_mode[0]);
+        tui_vert_hm(buf, res_zeros.read_area, mx, 3, 4, 50);
+        debugf(" %s  |               DCACHE write %8ld\n", buf, res_mode[1]);
     }
 }

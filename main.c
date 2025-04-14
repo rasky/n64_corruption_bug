@@ -44,7 +44,7 @@ int main() {
     trigger_init();
     
     uint32_t test_count = 0;
-    while(test_count < 10000){
+    while(test_count < 100000){
         for(uint8_t device = PRIME_DEVICE_DMEM; device <= PRIME_DEVICE_PI; ++device){
             for(uint8_t dir = PRIME_DIR_RDRAM2RCP; dir <= PRIME_DIR_RCP2RDRAM; ++dir){
                 prime_init(device, dir, size, prime_ram, pattern);
