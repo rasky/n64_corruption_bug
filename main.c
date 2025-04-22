@@ -50,13 +50,18 @@ int main() {
             for(uint8_t dir = PRIME_DIR_RDRAM2RCP; dir <= PRIME_DIR_RCP2RDRAM; ++dir){
                 prime_init(device, dir, size, prime_ram, pattern);
                 for(uint8_t tmode = TRIGGER_DCACHE_READ; tmode <= TRIGGER_DCACHE_WRITE; ++tmode){
-                    for(uint32_t offset_count = 0; offset_count < 128; ++offset_count){
+                    for(uint32_t offset_i = 0; offset_i < 128; ++offset_i){
                         if((test_count & 15) == 0){
                             trigger_tui_render();
                         }
                         uint32_t offset = integer_hash(test_count) & 0xFFF0;
                         run_test(8, device, dir, size, prime_ram, tmode, offset);
                         ++test_count;
+                    }
+                    if(tmode == TRIGGER_DCACHE_WRITE){
+                        // When done with write mode, check for bad writes which
+                        // went elsewhere in RDRAM.
+                        detect_full_scan();
                     }
                 }
             }
