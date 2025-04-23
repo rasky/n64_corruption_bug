@@ -6,7 +6,13 @@ after the system has been primed. This also includes detection. */
 #define TRIGGER_DCACHE_READ 0
 #define TRIGGER_DCACHE_WRITE 1
 
-extern uint32_t integer_hash(uint32_t x);
+#define DCACHE_LINE_SIZE 16
+#define DCACHE_LINE_COUNT 512
+#define DCACHE_SIZE_BYTES (DCACHE_LINE_SIZE*DCACHE_LINE_COUNT)
+
+extern uint32_t* most_of_dram;
+extern uint32_t* most_of_dram_end;
+
 /** Initialize the trigger system, filling most of RAM with hash values. */
 extern void trigger_init();
 /** Returns a pointer to an address which needs to be passed into the other
@@ -19,18 +25,7 @@ extern uint32_t* trigger_get_addr(uint32_t offset);
 extern void trigger_setup(uint8_t mode, uint32_t* addr);
 /** Trigger the corruption. */
 extern void trigger_go(uint8_t mode, uint32_t* addr);
-/** Detect the corruption after each test. */
-extern void trigger_detect(uint8_t mode, uint32_t* addr);
-/** After all TRIGGER_DCACHE_WRITE tests are done, detect and fix corruptions in
-the whole memory area (almost whole RDRAM). */
-extern void detect_full_scan();
-/** Render results in the terminal. */
-extern void trigger_tui_render();
-
-extern uint32_t cc_after_prime;
-extern uint32_t cc_after_trigger;
-extern uint8_t test_device;
-extern uint8_t test_dir;
-extern uint8_t test_tmode;
+/** Things that need to happen after the trigger (e.g. dcache writeback). */
+extern void trigger_after(uint8_t mode, uint32_t* addr);
 
 #endif
