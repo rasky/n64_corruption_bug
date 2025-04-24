@@ -3,8 +3,9 @@
 /** Trigger the corruption, i.e. do a memory operation which gets corrupted,
 after the system has been primed. This also includes detection. */
 
-#define TRIGGER_DCACHE_READ 0
-#define TRIGGER_DCACHE_WRITE 1
+#define TRIGGER_MODE_DCACHE_READ 0
+#define TRIGGER_MODE_DCACHE_WRITE 1
+#define TRIGGER_MODE_COUNT 2
 
 #define DCACHE_LINE_SIZE 16
 #define DCACHE_LINE_COUNT 512

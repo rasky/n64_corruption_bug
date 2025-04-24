@@ -57,8 +57,7 @@ shuffle_rdram_cc:
 # (except in the under-test ways) across trigger_setup, prime_go, and trigger_go.
 .global xact_critical_section
 xact_critical_section:
-    lbu	$v0, (39)($sp)
-    lw	$v1, (44)($sp)
+    lw $v0, (0x24)($sp)
     addiu $sp, $sp, -0x48
     sd $s0, (0x00)($sp)
     sd $s1, (0x08)($sp)
@@ -74,30 +73,28 @@ xact_critical_section:
     move $s2, $a2
     move $s3, $a3
     move $s4, $v0
-    move $s5, $v1
 
-    move $a0, $s4
+    move $a0, $s3
     jal trigger_setup
-    move $a1, $s5
+    move $a1, $s4
 
     move $a0, $s0
     move $a1, $s1
-    move $a2, $s2
     jal prime_go
-    move $a3, $s3
+    move $a2, $s2
     
     jal read_rdram_cc
      nop
-    move $s6, $v0
+    move $s7, $v0
     
-    move $a0, $s4
+    move $a0, $s3
     jal trigger_go
-    move $a1, $s5
+    move $a1, $s4
 
     jal read_rdram_cc
      nop
     lui $t0, %hi(cc_after_prime)
-    sw $s6, (%lo(cc_after_prime))($t0)
+    sw $s7, (%lo(cc_after_prime))($t0)
     lui $t0, %hi(cc_after_trigger)
     sw $v0, (%lo(cc_after_trigger))($t0)
 

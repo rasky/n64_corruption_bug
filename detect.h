@@ -43,9 +43,9 @@ typedef struct {
 extern res_t res;
 
 /** Detect the corruption after each test. */
-extern void detect_per_test(uint8_t mode, uint32_t* addr);
+extern void detect_per_test(uint8_t device, uint8_t dir, uint8_t mode, uint32_t* addr);
 /** After all TRIGGER_DCACHE_WRITE tests are done, detect and fix corruptions in
 the whole memory area (almost whole RDRAM). */
-extern void detect_full_scan();
+extern void detect_full_scan(uint8_t device, uint8_t dir);
 
 #endif

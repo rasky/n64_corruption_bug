@@ -71,7 +71,10 @@ static void record_cc_info(res_cc_t* res_cc, uint32_t cc){
     }
 }
 
-static bool check_area(uint32_t* start, uint32_t* end, uint8_t mode){
+static bool check_area(uint32_t* start, uint32_t* end, uint8_t device, uint8_t dir, uint8_t mode){
+    uint32_t device_dir = (device << 1) | dir;
+    if(device_dir >= 6) device_dir = 5;
+    
     bool errored = false;
     for(uint32_t* a = start; a < end; ){
         for(int32_t dword=0; dword<4; ++dword){ // Iterate over cachelines
@@ -81,7 +84,7 @@ static bool check_area(uint32_t* start, uint32_t* end, uint8_t mode){
             if(golden != actual){
                 errored = true;
                 int32_t za_area_offset = -1, d_area_offset = -1;
-                if(mode == TRIGGER_DCACHE_READ){
+                if(mode == TRIGGER_MODE_DCACHE_READ){
                     za_area_offset = (a - start) >> 2; // Number of cachelines in
                     d_area_offset = ((int32_t)(a - start) * RES_AREA_SIZE) / (int32_t)(end - start);
                     if(za_area_offset >= RES_AREA_SIZE) za_area_offset = RES_AREA_SIZE - 1;
@@ -94,13 +97,11 @@ static bool check_area(uint32_t* start, uint32_t* end, uint8_t mode){
                     // Recorded in check_record_error function
                 }else if(check_record_error((uint32_t)a, integer_hash_inverse(actual),
                     &res.aset_total, &res.aclear, dword, za_area_offset,
-                    mode == TRIGGER_DCACHE_WRITE)){
+                    mode == TRIGGER_MODE_DCACHE_WRITE)){
                     // Recorded in check_record_error function
                 }else{
                     ++res.unknown;
                 }
-                uint32_t device_dir = (test_device << 1) | test_dir;
-                if(device_dir >= 6) device_dir = 5;
                 ++res.device_dir[device_dir];
                 ++res.mode[mode & 1];
                 *a = golden; // fix for next iter
@@ -111,19 +112,19 @@ static bool check_area(uint32_t* start, uint32_t* end, uint8_t mode){
     return errored;
 }
 
-void detect_per_test(uint8_t mode, uint32_t* addr){
+void detect_per_test(uint8_t device, uint8_t dir, uint8_t mode, uint32_t* addr){
     // After each test, only check the test area.
     uint32_t* start = addr;
     uint32_t* end = addr + (DCACHE_SIZE_BYTES >> 2);
-    bool errored = check_area(start, end, mode);
+    bool errored = check_area(start, end, device, dir, mode);
     ++res.tests;
     if(errored) ++res.failed;
     record_cc_info(errored ? &res.cc_fail_prime : &res.cc_pass_prime, cc_after_prime);
     record_cc_info(errored ? &res.cc_fail_trigger : &res.cc_pass_trigger, cc_after_trigger);
 }
 
-void detect_full_scan() {
+void detect_full_scan(uint8_t device, uint8_t dir) {
     // Bad writes could go anywhere, so check and fix the entire memory area.
     // This only applies to TRIGGER_DCACHE_WRITE.
-    check_area(most_of_dram, most_of_dram_end, TRIGGER_DCACHE_WRITE);
+    check_area(most_of_dram, most_of_dram_end, device, dir, TRIGGER_MODE_DCACHE_WRITE);
 }

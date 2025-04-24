@@ -26,9 +26,13 @@ static void tui_vert_hm(char* buf, uint32_t* data, uint32_t mx,
     for(int32_t i=0; i<width; ++i){
         int32_t thresh = -1;
         if(mx > 0 && data[i] > 0){
-            thresh = data[i] * height / mx;
+            thresh = data[i] * (3 * height) / mx;
         }
-        buf[i] = ((int32_t)(height - 1 - row) <= thresh) ? '|' : ' ';
+        thresh -= (int32_t)(height - 1 - row) * 3;
+        thresh += 1; // Before this was [-1 or less, 0, 1, 2 or more]
+        if(thresh > 3) thresh = 3;
+        if(thresh < 0) thresh = 0;
+        buf[i] = " ,;|"[thresh];
     }
     buf[width] = '\0';
 }

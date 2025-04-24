@@ -43,7 +43,7 @@ uint32_t* trigger_get_addr(uint32_t offset){
 }
 
 void trigger_setup(uint8_t mode, uint32_t* addr){
-    if(mode == TRIGGER_DCACHE_READ){
+    if(mode == TRIGGER_MODE_DCACHE_READ){
         // Don't care about the writing, just need all invalid after.
         whole_dcache_writeifdirty_inval(addr);
     }else{
@@ -53,7 +53,7 @@ void trigger_setup(uint8_t mode, uint32_t* addr){
 }
 
 void trigger_go(uint8_t mode, uint32_t* addr){
-    if(mode == TRIGGER_DCACHE_READ){
+    if(mode == TRIGGER_MODE_DCACHE_READ){
         // Read and then dirty each cacheline without changing its data.
         whole_dcache_read_makedirty(addr);
     }else{
@@ -64,7 +64,7 @@ void trigger_go(uint8_t mode, uint32_t* addr){
 }
 
 void trigger_after(uint8_t mode, uint32_t* addr){
-    if(mode == TRIGGER_DCACHE_READ){
+    if(mode == TRIGGER_MODE_DCACHE_READ){
         // Writeback so we can see the cache state; previously made dirty.
         whole_dcache_writeifdirty_inval(addr);
     }
