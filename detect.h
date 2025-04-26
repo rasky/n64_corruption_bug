@@ -1,6 +1,9 @@
 #ifndef DETECT_H
 #define DETECT_H
 
+extern uint32_t cc_after_prime;
+extern uint32_t cc_after_trigger;
+
 #define RES_AREA_SIZE 50
 typedef struct {
     uint32_t total;

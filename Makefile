@@ -3,9 +3,25 @@ include $(N64_INST)/include/n64.mk
 
 all: n64_corruption_bug.z64
 
-hdr = hashes.h tui.h test.h prime.h trigger.h detect.h xact_critical_section.h
+hdr = \
+  hashes.h \
+  controller.h \
+  tui.h \
+  test.h \
+  prime.h \
+  trigger.h \
+  detect.h \
+  xact_critical_section.h
 # Order matters; from test.c through xact_critical_section.S will be in icache
-src = main.c hashes.c tui.c test.c prime.c trigger.c detect.c
+src = \
+  main.c \
+  hashes.c \
+  controller.c \
+  tui.c \
+  test.c \
+  prime.c \
+  trigger.c \
+  detect.c
 asm = xact_critical_section.S
 
 $(src): $(hdr)

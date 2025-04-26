@@ -7,6 +7,9 @@
 
 res_t res;
 
+uint32_t cc_after_prime;
+uint32_t cc_after_trigger;
+
 static uint32_t popcnt(uint32_t x){
     uint32_t ret = 0;
     for(int32_t i=0; i<32; ++i){
