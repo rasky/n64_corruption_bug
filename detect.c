@@ -5,10 +5,36 @@
 #include "test.h"
 #include "trigger.h"
 
-res_t res;
+/*
+const char* yaxis_labels[YAXIS_COUNT] = {
+    "Test failures",
+    "Test passes",
+    "Any corrupted words",
+    "Unknown corrupted words",
+    "Address bit clears",
+    "Data bit clears",
+    "Address bit sets",
+    "Data bit sets",
+};
+const char* xaxis_labels[XAXIS_COUNT - P_COUNT] = {
+    "Bit in word",
+    "Word in cacheline",
+    "Cacheline in buffer",
+    "RDRAM module 0 CC after prime",
+    "RDRAM module 1 CC after prime",
+    "RDRAM module 2 CC after prime",
+    "RDRAM module 3 CC after prime",
+    "RDRAM module 0 CC after trigger",
+    "RDRAM module 1 CC after trigger",
+    "RDRAM module 2 CC after trigger",
+    "RDRAM module 3 CC after trigger",
+};
+const plot_xinfo_t xinfo[XAXIS_COUNT] = {
+    {
+};
+*/
 
-uint32_t cc_after_prime;
-uint32_t cc_after_trigger;
+res_t res;
 
 static uint32_t popcnt(uint32_t x){
     uint32_t ret = 0;

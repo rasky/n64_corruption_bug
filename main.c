@@ -6,7 +6,7 @@
 int main() {
     disable_interrupts();
     debug_init_usblog();
-    debugf("\033[2J\033[HInitializing...\n");
+    debugf("\033[2J\033[H\n");
     test_main();
     dummy_function_end();
 }

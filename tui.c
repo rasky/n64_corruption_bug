@@ -4,6 +4,7 @@
 #include "detect.h"
 #include "controller.h"
 #include "test.h"
+#include "trigger.h"
 
 static uint32_t max_reduce(uint32_t* data, uint32_t size){
     uint32_t ret = 0;
@@ -82,7 +83,7 @@ static void tui_render_top() {
 }
 
 static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
-    debugf("\nPress START to start/stop test, <C / C> to change pages\n"
+    debugf("\nPress START to start/stop test\n"
         "Note that controller may be intermittently unresponsive during test\n\n");
     
     static uint8_t cursor_p = 0;
@@ -100,38 +101,41 @@ static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
     
     for(int32_t p=0; p<P_COUNT; ++p){
         bool sel_p = cursor_p == p;
-        debugf("%c %s: ", sel_p ? '>' : ' ', params[p].label);
-        if(params[p].value_labels != NULL){
-            if(sel_p && press_right && cursor_v < params[p].max - 1) ++cursor_v;
+        debugf("%c %s: ", sel_p ? '>' : ' ', param_info[p].label);
+        if(param_info[p].value_labels != NULL){
+            if(sel_p && press_right && cursor_v < param_info[p].max - 1) ++cursor_v;
             if(sel_p && press_left && cursor_v > 0) --cursor_v;
-            for(int32_t v=0; v<params[p].max; ++v){
+            for(int32_t v=0; v<param_info[p].max; ++v){
                 bool sel_v = cursor_v == v;
                 if(sel_p && sel_v && (buttons_press & BTN_A)){
-                    params[p].selected ^= 1 << v;
+                    param_state[p].selected ^= 1 << v;
                 }
-                bool on = (params[p].selected & (1 << v));
+                bool on = (param_state[p].selected & (1 << v));
                 debugf("%c%c%s%c%c  ",
                     sel_p && sel_v ? '>' : ' ',
                     on ? '[' : ' ',
-                    params[p].value_labels[v],
+                    param_info[p].value_labels[v],
                     on ? ']' : ' ',
                     sel_p && sel_v ? '<' : ' ');
             }
             debugf("\n");
         }else{
-            uint32_t final_value = next_param_value(p, true, false, true);
-            uint32_t edit_left =   next_param_value(p, true, true, true);
-            uint32_t edit_right =  next_param_value(p, true, true, false);
-            bool can_edit_left = edit_left != params[p].min;
-            bool can_edit_right = edit_right != params[p].max;
+            bool can_edit_left = param_state[p].selected > 1;
+            bool can_edit_right = param_state[p].selected < param_info[p].max;
             debugf("%lu to %lu (stop at %c %lu %c)           \n",
-                params[p].min,
-                final_value,
+                param_info[p].conversion(0),
+                param_info[p].conversion(param_state[p].selected - 1),
                 sel_p && can_edit_left ? '<' : ' ',
-                params[p].selected,
+                param_info[p].conversion(param_state[p].selected),
                 sel_p && can_edit_right ? '>' : ' ');
-            if(sel_p && press_left && can_edit_left) params[p].selected = edit_left;
-            if(sel_p && press_right && can_edit_right) params[p].selected = edit_right;
+            if(sel_p && press_left && can_edit_left){
+                param_state[p].selected = (param_info[p].flags & TEST_FLAG_EDIT_POWER2) ?
+                    param_state[p].selected >> 1 : param_state[p].selected - 1;
+            }
+            if(sel_p && press_right && can_edit_right){
+                param_state[p].selected = (param_info[p].flags & TEST_FLAG_EDIT_POWER2) ?
+                    param_state[p].selected << 1 : param_state[p].selected + 1;
+            }
         }
     }
 }
@@ -224,41 +228,50 @@ static void tui_render_cc() {
         3, RES_CC_HM_SIZE, "Module 3 (6-8 MiB):", NULL, false);
 }
 
-#define TUI_SCREEN_SETUP 0
-#define TUI_SCREEN_HEATMAPS 1
-#define TUI_SCREEN_CC 2
+#define TUI_SCREEN_HEATMAPS 0
+#define TUI_SCREEN_CC 1
 
 static uint16_t last_buttons = 0;
-static uint8_t tui_screen = TUI_SCREEN_SETUP;
+static uint8_t tui_screen = TUI_SCREEN_HEATMAPS;
 
 void tui_render() {
     uint16_t buttons = poll_controller();
     uint16_t buttons_press = (buttons ^ last_buttons) & buttons;
-    
     uint8_t last_screen = tui_screen;
-    if((buttons_press & BTN_CRIGHT) && tui_screen < TUI_SCREEN_CC){
-        ++tui_screen;
-    }else if((buttons_press & BTN_CLEFT) && tui_screen > TUI_SCREEN_SETUP){
-        --tui_screen;
-    }
+    
     if((buttons_press & BTN_START)){
         test_running = !test_running;
+        last_screen = -1;
         if(test_running){
+            debugf("\nFilling RDRAM...\n");
             memset(&res, 0, sizeof(res));
-            if(tui_screen == TUI_SCREEN_SETUP) tui_screen = TUI_SCREEN_HEATMAPS;
+            trigger_init();
+            test_reset();
+        }else{
+            debugf("\033[2J"); // Clear screen
         }
     }
-    if(last_screen != tui_screen){
-        debugf("\033[2J"); // Clear screen
-    }
     
-    tui_render_top();
-    if(tui_screen == TUI_SCREEN_SETUP){
+    if(test_running){
+        if((buttons_press & BTN_R) && tui_screen < TUI_SCREEN_CC){
+            ++tui_screen;
+        }else if((buttons_press & BTN_L) && tui_screen > TUI_SCREEN_HEATMAPS){
+            --tui_screen;
+        }
+        if(last_screen != tui_screen){
+            debugf("\033[2J"); // Clear screen
+        }
+        tui_render_top();
+        if(test_all_disabled){
+            debugf("There are no tests to run, press START to fix your test parameters\n");
+        }else if(tui_screen == TUI_SCREEN_HEATMAPS){
+            tui_render_heatmaps();
+        }else if(tui_screen == TUI_SCREEN_CC){
+            tui_render_cc();
+        }
+    }else{
+        tui_render_top();
         tui_render_setup(buttons, buttons_press);
-    }else if(tui_screen == TUI_SCREEN_HEATMAPS){
-        tui_render_heatmaps();
-    }else if(tui_screen == TUI_SCREEN_CC){
-        tui_render_cc();
     }
     
     last_buttons = buttons;

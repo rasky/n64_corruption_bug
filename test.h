@@ -2,19 +2,23 @@
 #define TEST_H
 
 #define TEST_FLAG_NONE          0
-#define TEST_FLAG_COUNT_POWER2 (1 << 0)
-#define TEST_FLAG_EDIT_POWER2  (1 << 1)
+#define TEST_FLAG_EDIT_POWER2  (1 << 0)
+
+typedef uint32_t (*ParamConversionFunc)(uint32_t in);
 
 typedef struct {
     const char* label;
     const char* const* value_labels;
-    uint32_t min;
+    ParamConversionFunc conversion;
     uint32_t max;
+    uint32_t flags;
+} test_param_info_t;
+
+typedef struct {
     uint32_t selected;
     uint32_t current;
-    uint32_t last;
-    uint32_t flags;
-} test_param_t;
+    uint32_t real;
+} test_param_state_t;
 
 #define P_SIZE 0
 #define P_ZEROS 1
@@ -25,10 +29,15 @@ typedef struct {
 #define P_REPEATS 6
 #define P_COUNT 7
 
-extern test_param_t params[P_COUNT];
+extern const test_param_info_t param_info[P_COUNT];
+extern test_param_state_t param_state[P_COUNT];
 extern bool test_running;
+extern bool test_all_disabled;
+extern uint32_t cc_after_prime;
+extern uint32_t cc_after_trigger;
 
 extern uint32_t next_param_value(int32_t p, bool sel, bool edit, bool reverse);
+extern void test_reset();
 extern void test_main();
 
 #endif
