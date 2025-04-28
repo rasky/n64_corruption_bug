@@ -9,8 +9,8 @@
 #include "xact_critical_section.h"
 
 static const char* const device_labels[PRIME_DEVICE_COUNT] = {"DMEM", "IMEM", "PI"};
-static const char* const dir_labels[PRIME_DIR_COUNT] = {"RDRAM to RCP", "RCP to RDRAM"};
-static const char* const tmode_labels[TRIGGER_MODE_COUNT] = {"DCACHE read", "DCACHE write"};
+static const char* const dir_labels[PRIME_DIR_COUNT] = {"RDRAM->RCP", "RCP->RDRAM"};
+static const char* const tmode_labels[TRIGGER_MODE_COUNT] = {"DCACHE rd", "DCACHE wrt"};
 
 uint32_t NullConversion(uint32_t in){
     return in;
@@ -50,8 +50,6 @@ test_param_state_t param_state[P_COUNT] = {
 
 bool test_running = false;
 bool test_all_disabled = false;
-uint32_t cc_after_prime;
-uint32_t cc_after_trigger;
 
 inline uint32_t has_hit_real_max(int32_t p, uint32_t current){
     return current >= (param_info[p].value_labels != NULL ? 
@@ -145,8 +143,7 @@ void test_main() {
         xact_critical_section(param_state[P_DEVICE].real, param_state[P_DIR].real,
             param_state[P_SIZE].real, param_state[P_TMODE].real, taddr);
         trigger_after(param_state[P_TMODE].real, taddr);
-        detect_per_test(param_state[P_DEVICE].real, param_state[P_DIR].real,
-            param_state[P_TMODE].real, taddr);
+        detect_per_test(taddr);
         
         // If this is the end of the set of write mode tests (even if the next
         // set of tests is also write mode because read mode is disabled), check
@@ -169,7 +166,7 @@ void test_main() {
         }
         // Now the value of incrementNextParam going into P_TMODE
         if(incrementNextParam && param_state[P_TMODE].real == TRIGGER_MODE_DCACHE_WRITE){
-            detect_full_scan(param_state[P_DEVICE].real, param_state[P_DIR].real);
+            detect_full_scan();
         }
         
         ++test_count;

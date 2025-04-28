@@ -33,8 +33,6 @@ extern const test_param_info_t param_info[P_COUNT];
 extern test_param_state_t param_state[P_COUNT];
 extern bool test_running;
 extern bool test_all_disabled;
-extern uint32_t cc_after_prime;
-extern uint32_t cc_after_trigger;
 
 extern uint32_t next_param_value(int32_t p, bool sel, bool edit, bool reverse);
 extern void test_reset();

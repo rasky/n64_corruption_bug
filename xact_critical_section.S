@@ -93,10 +93,10 @@ xact_critical_section:
 
     jal read_rdram_cc
      nop
-    lui $t0, %hi(cc_after_prime)
-    sw $s7, (%lo(cc_after_prime))($t0)
-    lui $t0, %hi(cc_after_trigger)
-    sw $v0, (%lo(cc_after_trigger))($t0)
+    lui $t0, %hi(dstate + 0)
+    sw $s7, (%lo(dstate + 0))($t0)
+    lui $t0, %hi(dstate + 4)
+    sw $v0, (%lo(dstate + 4))($t0)
 
     ld $s0, (0x00)($sp)
     ld $s1, (0x08)($sp)

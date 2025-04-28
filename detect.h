@@ -1,55 +1,61 @@
 #ifndef DETECT_H
 #define DETECT_H
 
-/*
 #include "test.h"
 
-#define YAXIS_TEST_FAILURES  0
-#define YAXIS_TEST_PASSES    1
-#define YAXIS_WORD_ANY       2
-#define YAXIS_WORD_UNKNOWN   3
-#define YAXIS_BIT_CLEAR_ADDR 4
-#define YAXIS_BIT_CLEAR_DATA 5
-#define YAXIS_BIT_SET_ADDR   6
-#define YAXIS_BIT_SET_DATA   7
-#define YAXIS_COUNT          8
+#define YAXIS_OFF            0
+#define YAXIS_TEST_FAILURES  1
+#define YAXIS_TEST_PASSES    2
+#define YAXIS_WORD_ANY       3
+#define YAXIS_WORD_ZERO      4
+#define YAXIS_WORD_UNKNOWN   5
+#define YAXIS_BIT_CLEAR_ADDR 6 // Leave these four in the same order
+#define YAXIS_BIT_CLEAR_DATA 7
+#define YAXIS_BIT_SET_ADDR   8
+#define YAXIS_BIT_SET_DATA   9
+#define YAXIS_COUNT         10
 
 // P_SIZE through P_TMODE are params
-#define XAXIS_BIT_IDX      (P_OFFSETS +  0)
-#define XAXIS_WORD_IDX     (P_OFFSETS +  1)
-#define XAXIS_BUF_POS      (P_OFFSETS +  2)
-#define XAXIS_CC_0_PRIME   (P_OFFSETS +  3)
-#define XAXIS_CC_1_PRIME   (P_OFFSETS +  4)
-#define XAXIS_CC_2_PRIME   (P_OFFSETS +  5)
-#define XAXIS_CC_3_PRIME   (P_OFFSETS +  6)
-#define XAXIS_CC_0_TRIGGER (P_OFFSETS +  7)
-#define XAXIS_CC_1_TRIGGER (P_OFFSETS +  8)
-#define XAXIS_CC_2_TRIGGER (P_OFFSETS +  9)
-#define XAXIS_CC_3_TRIGGER (P_OFFSETS + 10)
-#define XAXIS_COUNT        (P_OFFSETS + 11)
+#define XAXIS_MIN          P_OFFSETS
+#define XAXIS_BIT_IDX      (XAXIS_MIN +  0)
+#define XAXIS_WORD_IDX     (XAXIS_MIN +  1)
+#define XAXIS_BUF_POS      (XAXIS_MIN +  2)
+#define XAXIS_CC_0_PRIME   (XAXIS_MIN +  3)
+#define XAXIS_CC_1_PRIME   (XAXIS_MIN +  4)
+#define XAXIS_CC_2_PRIME   (XAXIS_MIN +  5)
+#define XAXIS_CC_3_PRIME   (XAXIS_MIN +  6)
+#define XAXIS_CC_0_TRIGGER (XAXIS_MIN +  7)
+#define XAXIS_CC_1_TRIGGER (XAXIS_MIN +  8)
+#define XAXIS_CC_2_TRIGGER (XAXIS_MIN +  9)
+#define XAXIS_CC_3_TRIGGER (XAXIS_MIN + 10)
+#define XAXIS_COUNT        (XAXIS_MIN + 11)
 
 extern const char* yaxis_labels[YAXIS_COUNT];
-extern const char* xaxis_labels[XAXIS_COUNT - P_COUNT];
-
-typedef struct {
-    uint32_t xmin;
-    uint32_t xmax;
-    uint8_t xcount;
-} plot_xinfo_t;
-extern const plot_xinfo_t xinfo[XAXIS_COUNT];
+extern const char* xaxis_labels[XAXIS_COUNT - XAXIS_MIN];
 
 #define PLOT_MAX_X 50
 typedef struct {
     uint8_t yaxis;
     uint8_t xaxis;
     uint8_t ytiles;
+    uint8_t xcount;
     uint32_t data[PLOT_MAX_X];
 } plot_t;
-#define PLOT_COUNT 8
+#define PLOT_COUNT 15
 extern plot_t plots[PLOT_COUNT];
-*/
 
+typedef struct {
+    int32_t cc_after_prime; // Must be first for asm
+    int32_t cc_after_trigger; // Must be second for asm
+    uint8_t bit;
+    uint32_t* start;
+    uint32_t* end;
+    uint32_t* a;
+    int32_t dword;
+} detect_state_t;
+extern detect_state_t dstate;
 
+/*
 #define RES_AREA_SIZE 50
 typedef struct {
     uint32_t total;
@@ -90,12 +96,13 @@ typedef struct {
 } res_t;
 
 extern res_t res;
+*/
 
-
-/** Detect the corruption after each test. */
-extern void detect_per_test(uint8_t device, uint8_t dir, uint8_t mode, uint32_t* addr);
+/** Detect the corruption after each test. Depends on parts of dstate having
+been set up already. */
+extern void detect_per_test(uint32_t* addr);
 /** After all TRIGGER_DCACHE_WRITE tests are done, detect and fix corruptions in
 the whole memory area (almost whole RDRAM). */
-extern void detect_full_scan(uint8_t device, uint8_t dir);
+extern void detect_full_scan();
 
 #endif

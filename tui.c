@@ -14,6 +14,123 @@ static uint32_t max_reduce(uint32_t* data, uint32_t size){
     return ret;
 }
 
+#define PLOTS_AREA_W 106
+#define PLOTS_AREA_H 46
+static char plots_area[PLOTS_AREA_H*PLOTS_AREA_W];
+
+static void tui_plots_clear(){
+    char* p = plots_area;
+    for(int32_t y=0; y<PLOTS_AREA_H; ++y){
+        for(int32_t x=0; x<PLOTS_AREA_W-1; ++x){
+            *p++ = ' ';
+        }
+        *p++ = '\n';
+    }
+}
+
+#define PLOTPRINT(_x, _y, _format, ...) { \
+    int32_t _chars = snprintf(&plots_area[(_y)*PLOTS_AREA_W+(_x)], PLOTS_AREA_W-(_x), \
+        _format, __VA_ARGS__); \
+    assert(_chars > 0); \
+    plots_area[(_y)*PLOTS_AREA_W+(_x)+_chars] = ((_x) + _chars) == PLOTS_AREA_W ? '\n' : ' '; \
+}
+
+static void tui_render_plots(){
+    tui_plots_clear();
+    int32_t x = 0, y = 0;
+    for(int32_t p=0; p<PLOT_COUNT; ++p){
+        uint8_t yaxis = plots[p].yaxis, xaxis = plots[p].xaxis;
+        uint32_t xcount = plots[p].xcount, ycount = plots[p].ytiles;
+        if(yaxis == YAXIS_OFF) continue;
+        
+        bool horiz = xcount <= 8;
+        int32_t r = horiz ? xcount + 1 : ycount + 3;
+        if(y + r > PLOTS_AREA_H){
+            y = 0;
+            if(x == 0){
+                x = 52;
+            }else{
+                break;
+            }
+        }
+        
+        int32_t tmpx = x, tmpy = y;
+        uint32_t mx = max_reduce(plots[p].data, xcount);
+        PLOTPRINT(tmpx, tmpy, "%s over %s", yaxis_labels[yaxis],
+            xaxis < XAXIS_MIN ? param_info[xaxis].label : xaxis_labels[xaxis - XAXIS_MIN]);
+        ++tmpy;
+        
+        if(!horiz){
+            tmpx += (50 - xcount) >> 1;
+        }
+        for(int32_t datax = 0; datax < xcount; ++datax){
+            if(horiz){
+                if(xaxis < XAXIS_MIN){
+                    if(param_info[xaxis].value_labels != NULL){
+                        PLOTPRINT(tmpx, tmpy + datax, "%s", param_info[xaxis].value_labels[datax]);
+                    }else{
+                        PLOTPRINT(tmpx, tmpy + datax, "%lu", param_info[xaxis].conversion(datax));
+                    }
+                }else{
+                    PLOTPRINT(tmpx, tmpy + datax, "%ld", datax);
+                }
+                PLOTPRINT(tmpx + 44, tmpy + datax, "%6lu", plots[p].data[datax]);
+            }else{
+                int32_t label = datax;
+                char special_char = '\0';
+                if(xaxis == XAXIS_BIT_IDX){
+                    label = 31 - datax;
+                }else if(xaxis == XAXIS_BUF_POS){
+                    if(datax == xcount - 1) special_char = '>';
+                }else if(xaxis >= XAXIS_CC_0_PRIME && xaxis <= XAXIS_CC_3_TRIGGER){
+                    label = datax + (32 - (PLOT_MAX_X >> 1));
+                    if(datax == 0) special_char = '<';
+                    if(datax == xcount - 1) special_char = '>';
+                }
+                assert(label >= 0 && label <= 99);
+                int32_t tens = label / 10;
+                int32_t ones = label - tens * 10;
+                if(special_char == '\0' && tens != 0){
+                    plots_area[(tmpy+ycount  )*PLOTS_AREA_W + (tmpx+datax)] = tens + '0';
+                }
+                plots_area[(tmpy+ycount+1)*PLOTS_AREA_W + (tmpx+datax)] = 
+                    special_char != '\0' ? special_char : (ones + '0');
+            }
+        }
+        if(horiz){
+            tmpx += 10;
+        }
+        
+        int32_t subchar = horiz ? 1 : 3;
+        for(int32_t datax = 0; datax < xcount; ++datax){
+            uint32_t value = plots[p].data[datax];
+            int32_t thresh = -1;
+            if(mx > 0 && value > 0){
+                thresh = (value * (subchar * ycount)) / mx;
+            }
+            for(int32_t datay = 0; datay < ycount; ++datay){
+                if(horiz){
+                    plots_area[(tmpy+datax)*PLOTS_AREA_W + (tmpx+datay)] =
+                        (datay <= thresh) ? '=' : ' ';
+                }else{
+                    int32_t z = thresh - (int32_t)(ycount - 1 - datay) * subchar + 1;
+                    if(z > subchar) z = subchar;
+                    if(z < 0) z = 0;
+                    plots_area[(tmpy+datay)*PLOTS_AREA_W + (tmpx+datax)] = " ,;|"[z];
+                }
+            }
+        }
+        if(!horiz){
+            PLOTPRINT(x, tmpy, "%lu", mx);
+        }
+        
+        y += r + 1;
+    }
+    plots_area[PLOTS_AREA_H*PLOTS_AREA_W - 1] = '\0'; // Replace last newline with null term
+    debugf("%s", plots_area);
+}
+
+/*
 static void tui_horiz_hm(char* buf, uint32_t value, uint32_t mx){
     int32_t thresh = -1;
     if(mx > 0){
@@ -73,13 +190,15 @@ static void tui_dual_heatmap(
         }
     }
 }
+*/
 
 static void tui_render_top() {
     debugf(
         "\033[H" // Move cursor to upper left
         "N64 Corruption Bug TUI by Sauraen; based on previous work by korgeaux, Rasky, HailToDodongo\n\n"
+        /*
         "%8ld tests  %8ld corrupted, %8ld not  %8ld unknown corruptions\n",
-        res.tests, res.failed, res.tests - res.failed, res.unknown);
+        res.tests, res.failed, res.tests - res.failed, res.unknown*/);
 }
 
 static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
@@ -140,6 +259,7 @@ static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
     }
 }
 
+/*
 static void tui_render_heatmaps() {
     debugf(
         "     ADDRESS BIT CLEARS   (%4ld address bit sets)    |"
@@ -157,10 +277,8 @@ static void tui_render_heatmaps() {
     tui_dual_heatmap(res.aclear.info.read_area, res.dclear.info.read_area, 4, 50,
         "Heatmap over beginning of buffer for reads:",
         "Heatmap over whole buffer for reads:", false);
-    /*
-    tui_dual_heatmap(res.aclear.info.write_area, res.dclear.info.write_area, 4, 50,
-        "Heatmap over most of RDRAM for writes:", NULL, false);
-    */
+    //tui_dual_heatmap(res.aclear.info.write_area, res.dclear.info.write_area, 4, 50,
+    //    "Heatmap over most of RDRAM for writes:", NULL, false);
     debugf("\n\n"
         "            ZERO WORDS (%8ld total)              |"
         "                  BY PRIME METHOD\n"
@@ -230,21 +348,23 @@ static void tui_render_cc() {
 
 #define TUI_SCREEN_HEATMAPS 0
 #define TUI_SCREEN_CC 1
-
-static uint16_t last_buttons = 0;
 static uint8_t tui_screen = TUI_SCREEN_HEATMAPS;
+*/
 
 void tui_render() {
+    static uint16_t last_buttons = 0;
     uint16_t buttons = poll_controller();
     uint16_t buttons_press = (buttons ^ last_buttons) & buttons;
-    uint8_t last_screen = tui_screen;
+    //uint8_t last_screen = tui_screen;
     
     if((buttons_press & BTN_START)){
         test_running = !test_running;
-        last_screen = -1;
+        //last_screen = -1;
         if(test_running){
             debugf("\nFilling RDRAM...\n");
-            memset(&res, 0, sizeof(res));
+            for(int32_t p=0; p<PLOT_COUNT; ++p){
+                memset(plots[p].data, 0, PLOT_MAX_X * sizeof(uint32_t));
+            }
             trigger_init();
             test_reset();
         }else{
@@ -253,6 +373,7 @@ void tui_render() {
     }
     
     if(test_running){
+        /*
         if((buttons_press & BTN_R) && tui_screen < TUI_SCREEN_CC){
             ++tui_screen;
         }else if((buttons_press & BTN_L) && tui_screen > TUI_SCREEN_HEATMAPS){
@@ -261,13 +382,16 @@ void tui_render() {
         if(last_screen != tui_screen){
             debugf("\033[2J"); // Clear screen
         }
+        */
         tui_render_top();
         if(test_all_disabled){
             debugf("There are no tests to run, press START to fix your test parameters\n");
-        }else if(tui_screen == TUI_SCREEN_HEATMAPS){
+        }else/* if(tui_screen == TUI_SCREEN_HEATMAPS){
             tui_render_heatmaps();
         }else if(tui_screen == TUI_SCREEN_CC){
             tui_render_cc();
+        }*/{
+            tui_render_plots();
         }
     }else{
         tui_render_top();

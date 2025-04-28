@@ -5,18 +5,19 @@
 #include "test.h"
 #include "trigger.h"
 
-/*
 const char* yaxis_labels[YAXIS_COUNT] = {
+    "Off",
     "Test failures",
     "Test passes",
     "Any corrupted words",
+    "Zero words",
     "Unknown corrupted words",
     "Address bit clears",
     "Data bit clears",
     "Address bit sets",
     "Data bit sets",
 };
-const char* xaxis_labels[XAXIS_COUNT - P_COUNT] = {
+const char* xaxis_labels[XAXIS_COUNT - XAXIS_MIN] = {
     "Bit in word",
     "Word in cacheline",
     "Cacheline in buffer",
@@ -29,12 +30,26 @@ const char* xaxis_labels[XAXIS_COUNT - P_COUNT] = {
     "RDRAM module 2 CC after trigger",
     "RDRAM module 3 CC after trigger",
 };
-const plot_xinfo_t xinfo[XAXIS_COUNT] = {
-    {
-};
-*/
 
-res_t res;
+plot_t plots[PLOT_COUNT] = {
+    {YAXIS_TEST_FAILURES,  P_DEVICE, 32, 2, {}},
+    {YAXIS_TEST_FAILURES,  P_DIR, 32, 2, {}},
+    {YAXIS_TEST_FAILURES,  P_TMODE, 32, 2, {}},
+    {YAXIS_BIT_SET_ADDR,   P_TMODE, 32, 2, {}},
+    {YAXIS_BIT_SET_DATA,   P_TMODE, 32, 2, {}},
+    {YAXIS_BIT_CLEAR_ADDR, P_TMODE, 32, 2, {}},
+    {YAXIS_BIT_CLEAR_DATA, P_TMODE, 32, 2, {}},
+    {YAXIS_BIT_CLEAR_ADDR, XAXIS_WORD_IDX, 32, 4, {}},
+    {YAXIS_BIT_CLEAR_DATA, XAXIS_WORD_IDX, 32, 4, {}},
+    {YAXIS_BIT_CLEAR_ADDR, XAXIS_BIT_IDX, 6, 32, {}},
+    {YAXIS_BIT_CLEAR_DATA, XAXIS_BIT_IDX, 6, 32, {}},
+    {YAXIS_BIT_CLEAR_ADDR, XAXIS_BUF_POS, 4, 50, {}},
+    {YAXIS_BIT_CLEAR_DATA, XAXIS_BUF_POS, 4, 50, {}},
+    {YAXIS_OFF, P_SIZE, 8, 1, {}},
+    {YAXIS_OFF, P_SIZE, 8, 1, {}},
+};
+
+detect_state_t dstate;
 
 static uint32_t popcnt(uint32_t x){
     uint32_t ret = 0;
@@ -45,22 +60,50 @@ static uint32_t popcnt(uint32_t x){
     return ret;
 }
 
-static void record_error_info(res_info_t* ptr,
-    uint32_t errors, uint32_t dword, int32_t area_offset
-){
-    ptr->total += errors;
-    ptr->dwords[dword & 3] += errors;
-    if(area_offset >= 0){
-        ptr->read_area[area_offset] += errors;
+static void record_event(uint8_t yaxis) {
+    for(int32_t p=0; p<PLOT_COUNT; ++p){
+        if(plots[p].yaxis != yaxis) continue;
+        uint8_t xaxis = plots[p].xaxis;
+        int32_t x = -1;
+        if(xaxis < XAXIS_MIN){
+            x = param_state[xaxis].current;
+        }else if(xaxis == XAXIS_BIT_IDX){
+            x = 31 - dstate.bit;
+        }else if(xaxis == XAXIS_WORD_IDX){
+            x = dstate.dword;
+        }else if(xaxis == XAXIS_BUF_POS){
+            /*
+            int32_t za_area_offset = -1, d_area_offset = -1;
+            if(mode == TRIGGER_MODE_DCACHE_READ){
+                za_area_offset = (a - start) >> 2; // Number of cachelines in
+                d_area_offset = ((int32_t)(a - start) * RES_AREA_SIZE) / (int32_t)(end - start);
+                if(za_area_offset >= RES_AREA_SIZE) za_area_offset = RES_AREA_SIZE - 1;
+                if( d_area_offset >= RES_AREA_SIZE)  d_area_offset = RES_AREA_SIZE - 1;
+            }
+            */
+            // Ignore detections in full scan for now
+            if(dstate.end - dstate.start > (DCACHE_SIZE_BYTES >> 2)) continue;
+            x = (dstate.a - dstate.start) >> 2;
+            if(x >= PLOT_MAX_X) x = PLOT_MAX_X - 1;
+        }else if(xaxis >= XAXIS_CC_0_PRIME && xaxis <= XAXIS_CC_3_TRIGGER){
+            x = (xaxis >= XAXIS_CC_0_TRIGGER) ? dstate.cc_after_trigger : dstate.cc_after_prime;
+            x = (x >> ((3 - ((xaxis - XAXIS_CC_0_TRIGGER) & 3)) << 3)) & 0xFF;
+            x -= (32 - (PLOT_MAX_X >> 1)); // 32 is the midpoint
+            if(x < 0) x = 0;
+            if(x >= PLOT_MAX_X) x = PLOT_MAX_X - 1;
+        }
+        if(x >= PLOT_MAX_X || x < 0){
+            debugf("Invalid x %lu, yaxis %u plot %ld\n", x, yaxis, p);
+            assert(false);
+        }
+        ++plots[p].data[x];
     }
 }
 
-static bool check_record_error(
-    uint32_t golden, uint32_t actual,
-    uint32_t* set_total_ptr, res_clear_t* clear_ptr,
-    uint32_t dword, int32_t area_offset, bool swap
+static bool check_record_bit_error(
+    uint32_t golden, uint32_t actual, bool is_data
 ){
-    if(swap){
+    if(!is_data && param_state[P_TMODE].real == TRIGGER_MODE_DCACHE_WRITE){
         // For address errors when writing, the inverse hash of actual is the
         // address it intended to write to, and golden == a is the incorrect
         // address which was written to. So swap them, which effectively swaps
@@ -70,39 +113,20 @@ static bool check_record_error(
     uint32_t corruption = golden ^ actual;
     uint32_t pop = popcnt(corruption);
     if(pop > 6) return false; // Not this kind of corruption
-    uint32_t set = corruption & actual;
-    uint32_t clear = corruption & golden;
-    if(set == 0){
-        // Bits cleared, usual case
-        for(int32_t i=0; i<32; ++i){
-            // TUI renders in the order 31-0
-            if(corruption & 0x80000000) clear_ptr->bits[i]++;
-            corruption <<= 1;
+    for(dstate.bit = 0; dstate.bit < 32; ++dstate.bit){
+        if((corruption & 1)){
+            record_event(((actual & 1) ? YAXIS_BIT_SET_ADDR : YAXIS_BIT_CLEAR_ADDR)
+                + (int32_t)is_data);
         }
-        record_error_info(&clear_ptr->info, pop, dword, area_offset);
-    }else if(clear == 0){
-        // Bits set
-        *set_total_ptr += pop;
-    }else{
-        // Some combination
-        res.unknown += pop;
+        corruption >>= 1;
+        actual >>= 1;
     }
     return true;
 }
 
-static void record_cc_info(res_cc_t* res_cc, uint32_t cc){
-    for(int32_t m=0; m<4; ++m){
-        int32_t x = (cc >> ((3 - m) << 3)) & 0xFF;
-        x -= (32 - (RES_CC_HM_SIZE >> 1)); // 32 is the midpoint
-        if(x < 0) x = 0;
-        if(x >= RES_CC_HM_SIZE) x = RES_CC_HM_SIZE - 1;
-        ++res_cc->modules[m].hm[x];
-    }
-}
-
-static bool check_area(uint32_t* start, uint32_t* end, uint8_t device, uint8_t dir, uint8_t mode){
-    uint32_t device_dir = (device << 1) | dir;
-    if(device_dir >= 6) device_dir = 5;
+static bool check_area(uint32_t* start, uint32_t* end){
+    dstate.start = start;
+    dstate.end = end;
     
     bool errored = false;
     for(uint32_t* a = start; a < end; ){
@@ -112,27 +136,18 @@ static bool check_area(uint32_t* start, uint32_t* end, uint8_t device, uint8_t d
             uint32_t actual = *a;
             if(golden != actual){
                 errored = true;
-                int32_t za_area_offset = -1, d_area_offset = -1;
-                if(mode == TRIGGER_MODE_DCACHE_READ){
-                    za_area_offset = (a - start) >> 2; // Number of cachelines in
-                    d_area_offset = ((int32_t)(a - start) * RES_AREA_SIZE) / (int32_t)(end - start);
-                    if(za_area_offset >= RES_AREA_SIZE) za_area_offset = RES_AREA_SIZE - 1;
-                    if( d_area_offset >= RES_AREA_SIZE)  d_area_offset = RES_AREA_SIZE - 1;
-                }
+                dstate.a = a;
+                dstate.dword = dword;
+                record_event(YAXIS_WORD_ANY);
                 if(actual == 0){
-                    record_error_info(&res.zeros, 1, dword, za_area_offset);
-                }else if(check_record_error(golden, actual,
-                    &res.dset_total, &res.dclear, dword, d_area_offset, false)){
-                    // Recorded in check_record_error function
-                }else if(check_record_error((uint32_t)a, integer_hash_inverse(actual),
-                    &res.aset_total, &res.aclear, dword, za_area_offset,
-                    mode == TRIGGER_MODE_DCACHE_WRITE)){
-                    // Recorded in check_record_error function
+                    record_event(YAXIS_WORD_ZERO);
+                }else if(check_record_bit_error(golden, actual, true)){
+                    // Recorded in check_record_bit_error function
+                }else if(check_record_bit_error((uint32_t)a, integer_hash_inverse(actual), false)){
+                    // Recorded in check_record_bit_error function
                 }else{
-                    ++res.unknown;
+                    record_event(YAXIS_WORD_UNKNOWN);
                 }
-                ++res.device_dir[device_dir];
-                ++res.mode[mode & 1];
                 *a = golden; // fix for next iter
             }
             ++a;
@@ -141,19 +156,15 @@ static bool check_area(uint32_t* start, uint32_t* end, uint8_t device, uint8_t d
     return errored;
 }
 
-void detect_per_test(uint8_t device, uint8_t dir, uint8_t mode, uint32_t* addr){
+void detect_per_test(uint32_t* addr){
     // After each test, only check the test area.
-    uint32_t* start = addr;
-    uint32_t* end = addr + (DCACHE_SIZE_BYTES >> 2);
-    bool errored = check_area(start, end, device, dir, mode);
-    ++res.tests;
-    if(errored) ++res.failed;
-    record_cc_info(errored ? &res.cc_fail_prime : &res.cc_pass_prime, cc_after_prime);
-    record_cc_info(errored ? &res.cc_fail_trigger : &res.cc_pass_trigger, cc_after_trigger);
+    bool errored = check_area(addr, addr + (DCACHE_SIZE_BYTES >> 2));
+    record_event(errored ? YAXIS_TEST_FAILURES : YAXIS_TEST_PASSES);
 }
 
-void detect_full_scan(uint8_t device, uint8_t dir) {
+void detect_full_scan() {
     // Bad writes could go anywhere, so check and fix the entire memory area.
     // This only applies to TRIGGER_DCACHE_WRITE.
-    check_area(most_of_dram, most_of_dram_end, device, dir, TRIGGER_MODE_DCACHE_WRITE);
+    bool errored = check_area(most_of_dram, most_of_dram_end);
+    if(errored) record_event(YAXIS_TEST_FAILURES);
 }
