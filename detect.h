@@ -33,15 +33,25 @@
 extern const char* yaxis_labels[YAXIS_COUNT];
 extern const char* xaxis_labels[XAXIS_COUNT - XAXIS_MIN];
 
+#define PLOT_COUNT 16
+#define PLOT_PRESET_COUNT 3
 #define PLOT_MAX_X 50
+
+#define PLOT_FLAG_NOLABELS (1 << 0)
+
 typedef struct {
     uint8_t yaxis;
     uint8_t xaxis;
     uint8_t ytiles;
     uint8_t xcount;
+    uint8_t flags;
+} plot_info_t;
+
+typedef struct {
+    plot_info_t info;
     uint32_t data[PLOT_MAX_X];
 } plot_t;
-#define PLOT_COUNT 15
+
 extern plot_t plots[PLOT_COUNT];
 
 typedef struct {

@@ -31,23 +31,7 @@ const char* xaxis_labels[XAXIS_COUNT - XAXIS_MIN] = {
     "RDRAM module 3 CC after trigger",
 };
 
-plot_t plots[PLOT_COUNT] = {
-    {YAXIS_TEST_FAILURES,  P_DEVICE, 32, 2, {}},
-    {YAXIS_TEST_FAILURES,  P_DIR, 32, 2, {}},
-    {YAXIS_TEST_FAILURES,  P_TMODE, 32, 2, {}},
-    {YAXIS_BIT_SET_ADDR,   P_TMODE, 32, 2, {}},
-    {YAXIS_BIT_SET_DATA,   P_TMODE, 32, 2, {}},
-    {YAXIS_BIT_CLEAR_ADDR, P_TMODE, 32, 2, {}},
-    {YAXIS_BIT_CLEAR_DATA, P_TMODE, 32, 2, {}},
-    {YAXIS_BIT_CLEAR_ADDR, XAXIS_WORD_IDX, 32, 4, {}},
-    {YAXIS_BIT_CLEAR_DATA, XAXIS_WORD_IDX, 32, 4, {}},
-    {YAXIS_BIT_CLEAR_ADDR, XAXIS_BIT_IDX, 6, 32, {}},
-    {YAXIS_BIT_CLEAR_DATA, XAXIS_BIT_IDX, 6, 32, {}},
-    {YAXIS_BIT_CLEAR_ADDR, XAXIS_BUF_POS, 4, 50, {}},
-    {YAXIS_BIT_CLEAR_DATA, XAXIS_BUF_POS, 4, 50, {}},
-    {YAXIS_OFF, P_SIZE, 8, 1, {}},
-    {YAXIS_OFF, P_SIZE, 8, 1, {}},
-};
+plot_t plots[PLOT_COUNT];
 
 detect_state_t dstate;
 
@@ -62,8 +46,8 @@ static uint32_t popcnt(uint32_t x){
 
 static void record_event(uint8_t yaxis) {
     for(int32_t p=0; p<PLOT_COUNT; ++p){
-        if(plots[p].yaxis != yaxis) continue;
-        uint8_t xaxis = plots[p].xaxis;
+        if(plots[p].info.yaxis != yaxis) continue;
+        uint8_t xaxis = plots[p].info.xaxis;
         int32_t x = -1;
         if(xaxis < XAXIS_MIN){
             x = param_state[xaxis].current;

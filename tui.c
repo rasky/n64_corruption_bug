@@ -6,6 +6,69 @@
 #include "test.h"
 #include "trigger.h"
 
+static plot_info_t plot_presets[PLOT_PRESET_COUNT][PLOT_COUNT] = {
+    {
+        {YAXIS_TEST_FAILURES,  P_DEVICE,           32, 3},
+        {YAXIS_TEST_FAILURES,  P_DIR,              32, 2},
+        {YAXIS_TEST_FAILURES,  P_TMODE,            32, 2},
+        {YAXIS_BIT_CLEAR_ADDR, P_TMODE,            32, 2},
+        {YAXIS_BIT_CLEAR_DATA, P_TMODE,            32, 2},
+        {YAXIS_BIT_SET_ADDR,   P_TMODE,            32, 2},
+        {YAXIS_BIT_SET_DATA,   P_TMODE,            32, 2},
+        {YAXIS_WORD_ZERO,      P_TMODE,            32, 2},
+        {YAXIS_WORD_UNKNOWN,   P_TMODE,            32, 2},
+        {YAXIS_BIT_CLEAR_ADDR, P_DIR,              32, 2},
+        {YAXIS_BIT_CLEAR_DATA, P_DIR,              32, 2},
+        {YAXIS_BIT_SET_ADDR,   P_DIR,              32, 2},
+        {YAXIS_BIT_SET_DATA,   P_DIR,              32, 2},
+        {YAXIS_WORD_ZERO,      P_DIR,              32, 2},
+        {YAXIS_WORD_UNKNOWN,   P_DIR,              32, 2},
+    }, {
+        {YAXIS_BIT_CLEAR_ADDR, XAXIS_BIT_IDX,      6, 32},
+        {YAXIS_BIT_CLEAR_DATA, XAXIS_BIT_IDX,      6, 32},
+        {YAXIS_BIT_CLEAR_ADDR, XAXIS_WORD_IDX,     32, 4},
+        {YAXIS_BIT_CLEAR_DATA, XAXIS_WORD_IDX,     32, 4},
+        {YAXIS_BIT_CLEAR_ADDR, XAXIS_BUF_POS,      4, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_BIT_CLEAR_DATA, XAXIS_BUF_POS,      4, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_BIT_SET_ADDR,   XAXIS_BIT_IDX,      6, 32},
+        {YAXIS_BIT_SET_DATA,   XAXIS_BIT_IDX,      6, 32},
+        {YAXIS_BIT_SET_ADDR,   XAXIS_WORD_IDX,     32, 4},
+        {YAXIS_BIT_SET_DATA,   XAXIS_WORD_IDX,     32, 4},
+        {YAXIS_BIT_SET_ADDR,   XAXIS_BUF_POS,      4, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_BIT_SET_DATA,   XAXIS_BUF_POS,      4, 50, PLOT_FLAG_NOLABELS},
+    }, {
+        {YAXIS_TEST_FAILURES,  XAXIS_CC_0_PRIME,   3, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_TEST_PASSES,    XAXIS_CC_0_PRIME,   3, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_TEST_FAILURES,  XAXIS_CC_0_TRIGGER, 3, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_TEST_PASSES,    XAXIS_CC_0_TRIGGER, 3, 50},
+        {YAXIS_TEST_FAILURES,  XAXIS_CC_1_PRIME,   3, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_TEST_PASSES,    XAXIS_CC_1_PRIME,   3, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_TEST_FAILURES,  XAXIS_CC_1_TRIGGER, 3, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_TEST_PASSES,    XAXIS_CC_1_TRIGGER, 3, 50},
+        {YAXIS_TEST_FAILURES,  XAXIS_CC_2_PRIME,   3, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_TEST_PASSES,    XAXIS_CC_2_PRIME,   3, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_TEST_FAILURES,  XAXIS_CC_2_TRIGGER, 3, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_TEST_PASSES,    XAXIS_CC_2_TRIGGER, 3, 50},
+        {YAXIS_TEST_FAILURES,  XAXIS_CC_3_PRIME,   3, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_TEST_PASSES,    XAXIS_CC_3_PRIME,   3, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_TEST_FAILURES,  XAXIS_CC_3_TRIGGER, 3, 50, PLOT_FLAG_NOLABELS},
+        {YAXIS_TEST_PASSES,    XAXIS_CC_3_TRIGGER, 3, 50},
+    }
+};
+static const char* preset_descriptions[PLOT_PRESET_COUNT] = {
+    "Failure types",
+    "Failure locations",
+    "Current control",
+};
+
+static uint8_t sel_preset = 0;
+
+static void apply_preset() {
+    for(int32_t p=0; p<PLOT_COUNT; ++p){
+        plots[p].info = plot_presets[sel_preset][p];
+    }
+}
+
 static uint32_t max_reduce(uint32_t* data, uint32_t size){
     uint32_t ret = 0;
     for(uint32_t i=0; i<size; ++i){
@@ -14,14 +77,20 @@ static uint32_t max_reduce(uint32_t* data, uint32_t size){
     return ret;
 }
 
-#define PLOTS_AREA_W 106
+#define PLOTS_AREA_W 108
+#define PLOTS_AREA_MID ((PLOTS_AREA_W >> 1) - 1)
 #define PLOTS_AREA_H 46
 static char plots_area[PLOTS_AREA_H*PLOTS_AREA_W];
 
 static void tui_plots_clear(){
     char* p = plots_area;
     for(int32_t y=0; y<PLOTS_AREA_H; ++y){
-        for(int32_t x=0; x<PLOTS_AREA_W-1; ++x){
+        int32_t x;
+        for(x=0; x<PLOTS_AREA_MID; ++x){
+            *p++ = ' ';
+        }
+        *p++ = '|';
+        for(++x; x<PLOTS_AREA_W-1; ++x){
             *p++ = ' ';
         }
         *p++ = '\n';
@@ -39,16 +108,17 @@ static void tui_render_plots(){
     tui_plots_clear();
     int32_t x = 0, y = 0;
     for(int32_t p=0; p<PLOT_COUNT; ++p){
-        uint8_t yaxis = plots[p].yaxis, xaxis = plots[p].xaxis;
-        uint32_t xcount = plots[p].xcount, ycount = plots[p].ytiles;
+        uint8_t yaxis = plots[p].info.yaxis, xaxis = plots[p].info.xaxis;
+        uint32_t xcount = plots[p].info.xcount, ycount = plots[p].info.ytiles;
+        uint8_t flags = plots[p].info.flags;
         if(yaxis == YAXIS_OFF) continue;
         
         bool horiz = xcount <= 8;
-        int32_t r = horiz ? xcount + 1 : ycount + 3;
+        int32_t r = horiz ? xcount + 1 : (flags & PLOT_FLAG_NOLABELS) ? ycount + 1 : ycount + 3;
         if(y + r > PLOTS_AREA_H){
             y = 0;
             if(x == 0){
-                x = 52;
+                x = PLOTS_AREA_MID + 3;
             }else{
                 break;
             }
@@ -75,7 +145,7 @@ static void tui_render_plots(){
                     PLOTPRINT(tmpx, tmpy + datax, "%ld", datax);
                 }
                 PLOTPRINT(tmpx + 44, tmpy + datax, "%6lu", plots[p].data[datax]);
-            }else{
+            }else if(!(flags & PLOT_FLAG_NOLABELS)){
                 int32_t label = datax;
                 char special_char = '\0';
                 if(xaxis == XAXIS_BIT_IDX){
@@ -211,7 +281,7 @@ static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
         --cursor_p;
         cursor_v = 0;
     }
-    if((buttons_press & BTN_DDOWN) && cursor_p < P_COUNT-1){
+    if((buttons_press & BTN_DDOWN) && cursor_p < P_COUNT){
         ++cursor_p;
         cursor_v = 0;
     }
@@ -256,6 +326,20 @@ static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
                     param_state[p].selected << 1 : param_state[p].selected + 1;
             }
         }
+    }
+    {
+        bool sel_p = cursor_p == P_COUNT;
+        bool can_left = sel_p && sel_preset > 0;
+        bool can_right = sel_p && sel_preset < PLOT_PRESET_COUNT - 1;
+        debugf("\n%c Plot presets: %c %s %c  %s                      \n",
+            sel_p ? '>' : ' ',
+            can_left ? '<' : ' ',
+            preset_descriptions[sel_preset],
+            can_right ? '>' : ' ',
+            sel_p ? "(Press A to apply)" : "");
+        if(can_right && press_right) ++sel_preset;
+        if(can_left && press_left) --sel_preset;
+        if(sel_p && (buttons_press & BTN_A)) apply_preset();
     }
 }
 
@@ -350,6 +434,10 @@ static void tui_render_cc() {
 #define TUI_SCREEN_CC 1
 static uint8_t tui_screen = TUI_SCREEN_HEATMAPS;
 */
+
+void tui_init() {
+    apply_preset();
+}
 
 void tui_render() {
     static uint16_t last_buttons = 0;
