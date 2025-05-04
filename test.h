@@ -3,6 +3,7 @@
 
 #define TEST_FLAG_NONE          0
 #define TEST_FLAG_EDIT_POWER2  (1 << 0)
+#define TEST_FLAG_RCPCC        (1 << 1)
 
 typedef uint32_t (*ParamConversionFunc)(uint32_t in);
 
@@ -20,14 +21,15 @@ typedef struct {
     uint32_t real;
 } test_param_state_t;
 
-#define P_SIZE 0
-#define P_ZEROS 1
-#define P_DEVICE 2
-#define P_DIR 3
-#define P_TMODE 4
-#define P_OFFSETS 5
-#define P_REPEATS 6
-#define P_COUNT 7
+#define P_RCPCC   0
+#define P_SIZE    1
+#define P_ZEROS   2
+#define P_DEVICE  3
+#define P_DIR     4
+#define P_TMODE   5
+#define P_OFFSETS 6
+#define P_REPEATS 7
+#define P_COUNT   8
 
 extern const test_param_info_t param_info[P_COUNT];
 extern test_param_state_t param_state[P_COUNT];

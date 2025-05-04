@@ -17,11 +17,8 @@ extern uint32_t* most_of_dram_end;
 /** Initialize the trigger system, filling most of RAM with hash values. */
 extern void trigger_init();
 /** Returns a pointer to an address which needs to be passed into the other
-functions. offset is a number of bytes, must be a multiple of 16, to offset the
-operations by. This is needed because the corruption appears to involve clearing
-address bits, so if the transactions always start at an address with a lot of
-0s, the corruption may not appear. */
-extern uint32_t* trigger_get_addr(uint32_t offset);
+functions. hash is a pseudorandom number to generate an address offset. */
+extern uint32_t* trigger_get_addr(uint32_t hash);
 /** Set up the initial state for triggering, before prime. */
 extern void trigger_setup(uint8_t mode, uint32_t* addr);
 /** Trigger the corruption. */

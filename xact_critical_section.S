@@ -51,13 +51,18 @@ shuffle_rdram_cc:
     or     $t0, $t0, $t5
     jr     $ra
      or    $v0, $v0, $t0
-    
+
+write_rcpcc:
+    lui    $v0, 0xA470
+    jr     $ra
+     sw    $a0, (0x0004)($v0) # RI_CONFIG register
 
 # Need to separate this out to ensure we do not use the data cache at all
 # (except in the under-test ways) across trigger_setup, prime_go, and trigger_go.
 .global xact_critical_section
 xact_critical_section:
     lw $v0, (0x24)($sp)
+    lw $v1, (0x2C)($sp)
     addiu $sp, $sp, -0x48
     sd $s0, (0x00)($sp)
     sd $s1, (0x08)($sp)
@@ -73,15 +78,20 @@ xact_critical_section:
     move $s2, $a2
     move $s3, $a3
     move $s4, $v0
+    move $s5, $v1
 
     move $a0, $s3
     jal trigger_setup
-    move $a1, $s4
+     move $a1, $s4
+
+    addiu $v0, $s5, -0x0040 # v0 == 0 if auto, v0 < 0 if manual
+    bltzal $v0, write_rcpcc # Only write if manual
+     move $a0, $s5
 
     move $a0, $s0
     move $a1, $s1
     jal prime_go
-    move $a2, $s2
+     move $a2, $s2
     
     jal read_rdram_cc
      nop
@@ -89,7 +99,11 @@ xact_critical_section:
     
     move $a0, $s3
     jal trigger_go
-    move $a1, $s4
+     move $a1, $s4
+
+    addiu $v0, $s5, -0x0040 # v0 == 0 if auto, v0 < 0 if manual
+    bltzal $v0, write_rcpcc # Only write if manual
+     li $a0, 0x0040 # Revert to AutoCC
 
     jal read_rdram_cc
      nop

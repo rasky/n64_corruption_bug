@@ -34,7 +34,7 @@ extern const char* yaxis_labels[YAXIS_COUNT];
 extern const char* xaxis_labels[XAXIS_COUNT - XAXIS_MIN];
 
 #define PLOT_COUNT 16
-#define PLOT_PRESET_COUNT 3
+#define PLOT_PRESET_COUNT 4
 #define PLOT_MAX_X 50
 
 #define PLOT_FLAG_NOLABELS (1 << 0)

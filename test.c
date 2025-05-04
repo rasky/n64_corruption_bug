@@ -20,7 +20,19 @@ uint32_t PrimeSizeConversion(uint32_t in){
     return 4096 >> in;
 }
 
+uint32_t RcpCcConversion(uint32_t in){
+    // Auto (0x40), 0x20, 0x21, 0x1F, 0x22, 0x1E, ...
+    if(in == 0) return 0x40; // auto
+    int32_t delta = in >> 1;
+    if((in & 1)){
+        return 0x20 - delta;
+    }else{
+        return 0x20 + delta;
+    }
+}
+
 const test_param_info_t param_info[P_COUNT] = {
+    {"RCP CC setting", NULL, RcpCcConversion, 32, TEST_FLAG_RCPCC},
     {"Prime size", NULL, PrimeSizeConversion, 9, TEST_FLAG_NONE},
     {"Zeros in 32b prime pattern", NULL, NullConversion, 33, TEST_FLAG_NONE},
     {"Prime device", device_labels, NullConversion, PRIME_DEVICE_COUNT, TEST_FLAG_NONE},
@@ -30,6 +42,7 @@ const test_param_info_t param_info[P_COUNT] = {
     {"Repeats", NULL, NullConversion, 1024, TEST_FLAG_EDIT_POWER2},
 };
 test_param_state_t param_state[P_COUNT] = {
+    {1, 0, -1},
     {1, 0, -1},
     {1, 0, -1},
     {
@@ -78,6 +91,7 @@ void prefill_icache() {
 }
 
 void test_main() {
+    tui_init();
     test_reset();
     
     uint32_t test_count = 0;
@@ -137,11 +151,12 @@ void test_main() {
             dir_or_above_changed = false;
         }
         
-        uint32_t offset = integer_hash(param_state[P_OFFSETS].real) & 0xFFF0;
-        uint32_t* taddr = trigger_get_addr(offset);
+        uint32_t hash = integer_hash(param_state[P_OFFSETS].real);
+        uint32_t* taddr = trigger_get_addr(hash);
         prefill_icache();
         xact_critical_section(param_state[P_DEVICE].real, param_state[P_DIR].real,
-            param_state[P_SIZE].real, param_state[P_TMODE].real, taddr);
+            param_state[P_SIZE].real, param_state[P_TMODE].real, taddr,
+            param_state[P_RCPCC].real);
         trigger_after(param_state[P_TMODE].real, taddr);
         detect_per_test(taddr);
         
@@ -171,4 +186,7 @@ void test_main() {
         
         ++test_count;
     }
+    
+    // Unreachable; we've destroyed the stack, can't return from here
+    asm volatile("teq $zero, $zero");
 }

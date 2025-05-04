@@ -53,12 +53,22 @@ static plot_info_t plot_presets[PLOT_PRESET_COUNT][PLOT_COUNT] = {
         {YAXIS_TEST_PASSES,    XAXIS_CC_3_PRIME,   3, 50, PLOT_FLAG_NOLABELS},
         {YAXIS_TEST_FAILURES,  XAXIS_CC_3_TRIGGER, 3, 50, PLOT_FLAG_NOLABELS},
         {YAXIS_TEST_PASSES,    XAXIS_CC_3_TRIGGER, 3, 50},
-    }
+    }, {
+        {YAXIS_TEST_PASSES,    P_RCPCC,            7, 32},
+        {YAXIS_TEST_FAILURES,  P_RCPCC,            7, 32},
+        {YAXIS_BIT_CLEAR_ADDR, P_RCPCC,            7, 32},
+        {YAXIS_BIT_CLEAR_DATA, P_RCPCC,            7, 32},
+        {YAXIS_BIT_SET_ADDR,   P_RCPCC,            7, 32},
+        {YAXIS_BIT_SET_DATA,   P_RCPCC,            7, 32},
+        {YAXIS_WORD_ZERO,      P_RCPCC,            7, 32},
+        {YAXIS_WORD_UNKNOWN,   P_RCPCC,            7, 32},
+    }, 
 };
 static const char* preset_descriptions[PLOT_PRESET_COUNT] = {
     "Failure types",
     "Failure locations",
     "Current control",
+    "RCP current control",
 };
 
 static uint8_t sel_preset = 0;
@@ -104,6 +114,10 @@ static void tui_plots_clear(){
     plots_area[(_y)*PLOTS_AREA_W+(_x)+_chars] = ((_x) + _chars) == PLOTS_AREA_W ? '\n' : ' '; \
 }
 
+static const char* get_xaxis_label(uint8_t xaxis){
+    return xaxis < XAXIS_MIN ? param_info[xaxis].label : xaxis_labels[xaxis - XAXIS_MIN];
+}
+
 static void tui_render_plots(){
     tui_plots_clear();
     int32_t x = 0, y = 0;
@@ -126,45 +140,48 @@ static void tui_render_plots(){
         
         int32_t tmpx = x, tmpy = y;
         uint32_t mx = max_reduce(plots[p].data, xcount);
-        PLOTPRINT(tmpx, tmpy, "%s over %s", yaxis_labels[yaxis],
-            xaxis < XAXIS_MIN ? param_info[xaxis].label : xaxis_labels[xaxis - XAXIS_MIN]);
+        PLOTPRINT(tmpx, tmpy, "%s over %s", yaxis_labels[yaxis], get_xaxis_label(xaxis));
         ++tmpy;
         
         if(!horiz){
             tmpx += (50 - xcount) >> 1;
         }
         for(int32_t datax = 0; datax < xcount; ++datax){
-            if(horiz){
-                if(xaxis < XAXIS_MIN){
-                    if(param_info[xaxis].value_labels != NULL){
-                        PLOTPRINT(tmpx, tmpy + datax, "%s", param_info[xaxis].value_labels[datax]);
+            char label_str[16];
+            bool extend_first = false, extend_last = false;
+            if(xaxis < XAXIS_MIN){
+                if(param_info[xaxis].value_labels != NULL){
+                    snprintf(label_str, 16, "%s", param_info[xaxis].value_labels[datax]);
+                }else if((param_info[xaxis].flags & TEST_FLAG_RCPCC)){
+                    if(datax == 0){
+                        snprintf(label_str, 16, "Auto");
                     }else{
-                        PLOTPRINT(tmpx, tmpy + datax, "%lu", param_info[xaxis].conversion(datax));
+                        snprintf(label_str, 16, "%02lX", param_info[xaxis].conversion(datax));
                     }
-                }else{
-                    PLOTPRINT(tmpx, tmpy + datax, "%ld", datax);
                 }
-                PLOTPRINT(tmpx + 44, tmpy + datax, "%6lu", plots[p].data[datax]);
-            }else if(!(flags & PLOT_FLAG_NOLABELS)){
+            }else{
                 int32_t label = datax;
-                char special_char = '\0';
                 if(xaxis == XAXIS_BIT_IDX){
                     label = 31 - datax;
                 }else if(xaxis == XAXIS_BUF_POS){
-                    if(datax == xcount - 1) special_char = '>';
+                    extend_last = true;
                 }else if(xaxis >= XAXIS_CC_0_PRIME && xaxis <= XAXIS_CC_3_TRIGGER){
                     label = datax + (32 - (PLOT_MAX_X >> 1));
-                    if(datax == 0) special_char = '<';
-                    if(datax == xcount - 1) special_char = '>';
+                    extend_first = extend_last = true;
                 }
-                assert(label >= 0 && label <= 99);
-                int32_t tens = label / 10;
-                int32_t ones = label - tens * 10;
-                if(special_char == '\0' && tens != 0){
-                    plots_area[(tmpy+ycount  )*PLOTS_AREA_W + (tmpx+datax)] = tens + '0';
+                snprintf(label_str, 16, "%2ld", label);
+            }
+            if(horiz){
+                PLOTPRINT(tmpx, tmpy + datax, "%s", label_str);
+                PLOTPRINT(tmpx + 44, tmpy + datax, "%6lu", plots[p].data[datax]);
+            }else if(!(flags & PLOT_FLAG_NOLABELS)){
+                if(extend_first && datax == 0){
+                    label_str[0] = ' '; label_str[1] = '<';
+                }else if(extend_last && datax == xcount - 1){
+                    label_str[0] = ' '; label_str[1] = '>';
                 }
-                plots_area[(tmpy+ycount+1)*PLOTS_AREA_W + (tmpx+datax)] = 
-                    special_char != '\0' ? special_char : (ones + '0');
+                plots_area[(tmpy+ycount  )*PLOTS_AREA_W + (tmpx+datax)] = label_str[0];
+                plots_area[(tmpy+ycount+1)*PLOTS_AREA_W + (tmpx+datax)] = label_str[1];
             }
         }
         if(horiz){
@@ -200,75 +217,10 @@ static void tui_render_plots(){
     debugf("%s", plots_area);
 }
 
-/*
-static void tui_horiz_hm(char* buf, uint32_t value, uint32_t mx){
-    int32_t thresh = -1;
-    if(mx > 0){
-        thresh = value * 32 / mx;
-    }
-    for(int32_t i=0; i<32; ++i) buf[i] = (i <= thresh) ? '=' : ' ';
-    buf[32] = '\0';
-}
-
-static void tui_vert_hm(char* buf, uint32_t* data, uint32_t mx,
-    int32_t row, uint32_t height, uint32_t width
-){
-    for(int32_t i=0; i<width; ++i){
-        int32_t thresh = -1;
-        if(mx > 0 && data[i] > 0){
-            thresh = data[i] * (3 * height) / mx;
-        }
-        thresh -= (int32_t)(height - 1 - row) * 3;
-        thresh += 1; // Before this was [-1 or less, 0, 1, 2 or more]
-        if(thresh > 3) thresh = 3;
-        if(thresh < 0) thresh = 0;
-        buf[i] = " ,;|"[thresh];
-    }
-    buf[width] = '\0';
-}
-
-static void tui_dual_heatmap(
-    uint32_t* adata, uint32_t* ddata,
-    uint32_t height, uint32_t width,
-    const char* description, const char* desc2, bool horizontal
-) {
-    char abuf[51];
-    char dbuf[51];
-    uint32_t ndata = horizontal ? height : width;
-    uint32_t amax = max_reduce(adata, ndata);
-    uint32_t dmax = max_reduce(ddata, ndata);
-    debugf(
-        "                                                     |\n"
-        "%-52s | %-52s\n", description, desc2 ? desc2 : description);
-    for(int32_t row=0; row<height; ++row){
-        if(horizontal){
-            tui_horiz_hm(abuf, adata[row], amax);
-            tui_horiz_hm(dbuf, ddata[row], dmax);
-            debugf("      %ld %s %8ld    |       %ld  %s %8ld\n",
-                row, abuf, adata[row],
-                row, dbuf, ddata[row]);
-        }else{
-            tui_vert_hm(abuf, adata, amax, row, height, width);
-            tui_vert_hm(dbuf, ddata, dmax, row, height, width);
-            if(row == 0 && width == 32){
-                debugf("  %8ld%s           |   %8ld%s\n", amax, abuf, dmax, dbuf);
-            }else{
-                int padcols = (52 - width) >> 1;
-                debugf("%*s%s%*s | %*s%s\n",
-                    padcols, "", abuf, padcols, "", padcols, "", dbuf);
-            }
-        }
-    }
-}
-*/
-
 static void tui_render_top() {
     debugf(
         "\033[H" // Move cursor to upper left
-        "N64 Corruption Bug TUI by Sauraen; based on previous work by korgeaux, Rasky, HailToDodongo\n\n"
-        /*
-        "%8ld tests  %8ld corrupted, %8ld not  %8ld unknown corruptions\n",
-        res.tests, res.failed, res.tests - res.failed, res.unknown*/);
+        "N64 Corruption Bug TUI by Sauraen; based on previous work by korgeaux, Rasky, HailToDodongo\n\n");
 }
 
 static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
@@ -281,7 +233,7 @@ static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
         --cursor_p;
         cursor_v = 0;
     }
-    if((buttons_press & BTN_DDOWN) && cursor_p < P_COUNT){
+    if((buttons_press & BTN_DDOWN) && cursor_p < (P_COUNT + 1 + PLOT_COUNT) - 1){
         ++cursor_p;
         cursor_v = 0;
     }
@@ -311,12 +263,25 @@ static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
         }else{
             bool can_edit_left = param_state[p].selected > 1;
             bool can_edit_right = param_state[p].selected < param_info[p].max;
-            debugf("%lu to %lu (stop at %c %lu %c)           \n",
-                param_info[p].conversion(0),
-                param_info[p].conversion(param_state[p].selected - 1),
-                sel_p && can_edit_left ? '<' : ' ',
-                param_info[p].conversion(param_state[p].selected),
-                sel_p && can_edit_right ? '>' : ' ');
+            if((param_info[p].flags & TEST_FLAG_RCPCC)){
+                debugf("%c Auto", sel_p && can_edit_left ? '<' : ' ');
+                const int32_t max_show = 5;
+                for(int32_t i=1; i<param_state[p].selected && 
+                        (i < max_show || max_show == param_state[p].selected - 1); ++i){
+                    debugf(", 0x%02lX", param_info[p].conversion(i));
+                }
+                if(param_state[p].selected - 1 > max_show){
+                    debugf(", ..., 0x%02lX", param_info[p].conversion(param_state[p].selected - 1));
+                }
+                debugf(" %c        \n", sel_p && can_edit_right ? '>' : ' ');
+            }else{
+                debugf("%lu to %lu (stop at %c %lu %c)           \n",
+                    param_info[p].conversion(0),
+                    param_info[p].conversion(param_state[p].selected - 1),
+                    sel_p && can_edit_left ? '<' : ' ',
+                    param_info[p].conversion(param_state[p].selected),
+                    sel_p && can_edit_right ? '>' : ' ');
+            }
             if(sel_p && press_left && can_edit_left){
                 param_state[p].selected = (param_info[p].flags & TEST_FLAG_EDIT_POWER2) ?
                     param_state[p].selected >> 1 : param_state[p].selected - 1;
@@ -341,99 +306,36 @@ static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
         if(can_left && press_left) --sel_preset;
         if(sel_p && (buttons_press & BTN_A)) apply_preset();
     }
-}
-
-/*
-static void tui_render_heatmaps() {
-    debugf(
-        "     ADDRESS BIT CLEARS   (%4ld address bit sets)    |"
-        "        DATA BIT CLEARS   (%4ld data bit sets)\n",
-        res.aset_total, res.dset_total);
-    tui_dual_heatmap(res.aclear.bits, res.dclear.bits, 8, 32,
-        "Heatmap over bits:", NULL, false);
-    debugf(
-        "          33222222222211111111110000000000           |"
-        "           33222222222211111111110000000000\n"
-        "          10987654321098765432109876543210           |"
-        "           10987654321098765432109876543210\n");
-    tui_dual_heatmap(res.aclear.info.dwords, res.dclear.info.dwords, 4, 32,
-        "Heatmap over dwords of cacheline:", NULL, true);
-    tui_dual_heatmap(res.aclear.info.read_area, res.dclear.info.read_area, 4, 50,
-        "Heatmap over beginning of buffer for reads:",
-        "Heatmap over whole buffer for reads:", false);
-    //tui_dual_heatmap(res.aclear.info.write_area, res.dclear.info.write_area, 4, 50,
-    //    "Heatmap over most of RDRAM for writes:", NULL, false);
-    debugf("\n\n"
-        "            ZERO WORDS (%8ld total)              |"
-        "                  BY PRIME METHOD\n"
-        "                                                     |\n"
-        "Heatmap over dwords of cacheline:                    |"
-        "                  +------------+------------+\n",
-        res.zeros.total);
-    {
-        char buf[51];
-        uint32_t mx = max_reduce(res.zeros.dwords, 4);
-        tui_horiz_hm(buf, res.zeros.dwords[0], mx);
-        debugf("      0 %s %8ld    |                  | RDRAM->RCP | RCP->RDRAM |\n",
-            buf, res.zeros.dwords[0]);
-        tui_horiz_hm(buf, res.zeros.dwords[1], mx);
-        debugf("      1 %s %8ld    |     +------------+------------+------------+\n",
-            buf, res.zeros.dwords[1]);
-        tui_horiz_hm(buf, res.zeros.dwords[2], mx);
-        debugf("      2 %s %8ld    |     | RSP DMEM   | %10ld | %10ld |\n",
-            buf, res.zeros.dwords[2], res.device_dir[0], res.device_dir[1]);
-        tui_horiz_hm(buf, res.zeros.dwords[3], mx);
-        debugf("      3 %s %8ld    |     | RSP IMEM   | %10ld | %10ld |\n"
-            "                                                     |"
-            "     | Cart \"ROM\" | %10ld | %10ld |\n"
-            "Heatmap over beginning of buffer for reads:          |"
-            "     +------------+------------+------------+\n",
-            buf, res.zeros.dwords[3], res.device_dir[2], res.device_dir[3],
-            res.device_dir[4], res.device_dir[5]);
-        mx = max_reduce(res.zeros.read_area, 50);
-        tui_vert_hm(buf, res.zeros.read_area, mx, 0, 4, 50);
-        debugf(" %s  |\n", buf);
-        tui_vert_hm(buf, res.zeros.read_area, mx, 1, 4, 50);
-        debugf(" %s  |                  BY TRIGGER MODE\n", buf);
-        tui_vert_hm(buf, res.zeros.read_area, mx, 2, 4, 50);
-        debugf(" %s  |               DCACHE read  %8ld\n", buf, res.mode[0]);
-        tui_vert_hm(buf, res.zeros.read_area, mx, 3, 4, 50);
-        debugf(" %s  |               DCACHE write %8ld\n", buf, res.mode[1]);
+    if(cursor_p >= P_COUNT + 1){
+        debugf("(Edit with C^ / Cv)\n");
+    }else{
+        debugf("                   \n");
+    }
+    for(int32_t p=0; p<PLOT_COUNT; ++p){
+        bool sel_p = (cursor_p - (P_COUNT + 1)) == p;
+        debugf("%c %c%23s%c",
+            sel_p ? '>' : ' ',
+            sel_p && cursor_v == 0 ? '>' : ' ',
+            yaxis_labels[plots[p].info.yaxis],
+            sel_p && cursor_v == 0 ? '<' : ' ');
+        if(plots[p].info.yaxis == YAXIS_OFF){
+            debugf("                                                              \n");
+        }else{
+            if(sel_p && press_right && cursor_v < 3) ++cursor_v;
+            if(sel_p && press_left && cursor_v > 0) --cursor_v;
+            debugf(" over %c%-31s%c, size %c%2u%c, %c%s%c        \n",
+                sel_p && cursor_v == 1 ? '>' : ' ',
+                get_xaxis_label(plots[p].info.xaxis),
+                sel_p && cursor_v == 1 ? '<' : ' ',
+                sel_p && cursor_v == 2 ? '>' : ' ',
+                plots[p].info.ytiles,
+                sel_p && cursor_v == 2 ? '<' : ' ',
+                sel_p && cursor_v == 3 ? '>' : ' ',
+                (plots[p].info.flags & PLOT_FLAG_NOLABELS) ? "no labels" : "--",
+                sel_p && cursor_v == 3 ? '<' : ' ');
+        }
     }
 }
-
-static void tui_render_cc() {
-    //debugf("Last prime %08lX trigger %08lX\n", cc_after_prime, cc_after_trigger);
-    debugf(
-        "RDRAM auto current control value after PRIME:\n"
-        "                When memory corrupted                |"
-        "             When memory NOT corrupted\n");
-    tui_dual_heatmap(res.cc_fail_prime.modules[0].hm, res.cc_pass_prime.modules[0].hm,
-        3, RES_CC_HM_SIZE, "Module 0 (0-2 MiB):", NULL, false);
-    tui_dual_heatmap(res.cc_fail_prime.modules[1].hm, res.cc_pass_prime.modules[1].hm,
-        3, RES_CC_HM_SIZE, "Module 1 (2-4 MiB):", NULL, false);
-    tui_dual_heatmap(res.cc_fail_prime.modules[2].hm, res.cc_pass_prime.modules[2].hm,
-        3, RES_CC_HM_SIZE, "Module 2 (4-6 MiB):", NULL, false);
-    tui_dual_heatmap(res.cc_fail_prime.modules[3].hm, res.cc_pass_prime.modules[3].hm,
-        3, RES_CC_HM_SIZE, "Module 3 (6-8 MiB):", NULL, false);
-    debugf(
-        "RDRAM auto current control value after TRIGGER:\n"
-        "                When memory corrupted                |"
-        "             When memory NOT corrupted\n");
-    tui_dual_heatmap(res.cc_fail_trigger.modules[0].hm, res.cc_pass_trigger.modules[0].hm,
-        3, RES_CC_HM_SIZE, "Module 0 (0-2 MiB):", NULL, false);
-    tui_dual_heatmap(res.cc_fail_trigger.modules[1].hm, res.cc_pass_trigger.modules[1].hm,
-        3, RES_CC_HM_SIZE, "Module 1 (2-4 MiB):", NULL, false);
-    tui_dual_heatmap(res.cc_fail_trigger.modules[2].hm, res.cc_pass_trigger.modules[2].hm,
-        3, RES_CC_HM_SIZE, "Module 2 (4-6 MiB):", NULL, false);
-    tui_dual_heatmap(res.cc_fail_trigger.modules[3].hm, res.cc_pass_trigger.modules[3].hm,
-        3, RES_CC_HM_SIZE, "Module 3 (6-8 MiB):", NULL, false);
-}
-
-#define TUI_SCREEN_HEATMAPS 0
-#define TUI_SCREEN_CC 1
-static uint8_t tui_screen = TUI_SCREEN_HEATMAPS;
-*/
 
 void tui_init() {
     apply_preset();
@@ -443,11 +345,9 @@ void tui_render() {
     static uint16_t last_buttons = 0;
     uint16_t buttons = poll_controller();
     uint16_t buttons_press = (buttons ^ last_buttons) & buttons;
-    //uint8_t last_screen = tui_screen;
     
     if((buttons_press & BTN_START)){
         test_running = !test_running;
-        //last_screen = -1;
         if(test_running){
             debugf("\nFilling RDRAM...\n");
             for(int32_t p=0; p<PLOT_COUNT; ++p){
@@ -461,24 +361,10 @@ void tui_render() {
     }
     
     if(test_running){
-        /*
-        if((buttons_press & BTN_R) && tui_screen < TUI_SCREEN_CC){
-            ++tui_screen;
-        }else if((buttons_press & BTN_L) && tui_screen > TUI_SCREEN_HEATMAPS){
-            --tui_screen;
-        }
-        if(last_screen != tui_screen){
-            debugf("\033[2J"); // Clear screen
-        }
-        */
         tui_render_top();
         if(test_all_disabled){
             debugf("There are no tests to run, press START to fix your test parameters\n");
-        }else/* if(tui_screen == TUI_SCREEN_HEATMAPS){
-            tui_render_heatmaps();
-        }else if(tui_screen == TUI_SCREEN_CC){
-            tui_render_cc();
-        }*/{
+        }else{
             tui_render_plots();
         }
     }else{
