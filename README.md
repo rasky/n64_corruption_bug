@@ -1,10 +1,69 @@
-## N64 Hardware Bug
+# N64 Corruption Bug
 
-This repository contains information and reproduction examples of what it
-appears to be a Nintendo 64 hardware bug related to RDRAM and RSP DMA transfers.
-This bug has probably gone unnoticed for many years because it requires very
-specific conditions to reproduce, but it is not impossible for it to happen
-during a normal working condition (eg: within a game).
+This repository contains information and reproduction examples for a Nintendo 64
+hardware bug causing memory corruption after large DMA transfers containing too
+many binary 1s.
+
+## FAQs
+
+### How does the bug manifest, in its simplest form?
+
+1. Perform a RSP DMA in either direction of a >= 2 KiB buffer of all 0xFF
+(all binary ones).
+2. Perform a CPU cacheline read or write.
+3. Sometimes, the read or written data will be partially corrupted. This most
+often appears as a small number of bit clears, which can be data bits or address
+bits (the latter meaning the read or write accesses the wrong address).
+
+### Does this affect all N64 hardware?
+
+It does reproduce on all consoles we tested, so it appears not to be specific
+of regions, or different motherboards. Based on its analog nature (discussed
+below), it may be possible to mitigate the root cause with console mods, besides
+the software fix discussed below.
+
+### Does this affect all N64 software (games)?
+
+Theoretically yes, but not in practice. Typical graphics microcodes, including
+the Nintendo supplied ones, do not perform RSP DMAs of the size needed to
+trigger this which could ever be all or mostly 1s as is needed to encounter the
+bug. In other words, we have not observed the bug to occur in retail games. We
+don't know if JPEG or MPEG decoding microcodes, with a frame which is all white
+(all 1s), would involve sufficiently large output buffers to encounter the bug.
+
+The bug was first encountered in [homebrew using custom microcodes](https://github.com/DragonMinded/libdragon/issues/539),
+and has since been encountered in multiple contexts with homebrew.
+
+### Is there a software fix which prevents the bug?
+
+Yes, add this to your game's boot code as early as possible (before turning on
+the VI). This has been added to libdragon's IPL3 substitute bootloader, so if
+you're using the latest version of that you already have the fix.
+```
+*(uint32_t*)0xA4700004 = 0x20;
+```
+This disables RAC auto current mode and sets manual current to the midpoint. For
+more information on what that means and why this fixes the issue, see the
+technical discussion below.
+
+This has been tested at length with the test ROM in this repo to confirm it
+prevents the issue. This has also been tested with multiple homebrew and non-
+homebrew projects, to confirm that this does not cause these already-stable
+ROMs to become unstable.
+
+However, there is a downside of this fix, which is that it may cause instability
+in extreme heat or extreme cold. The auto current mode, which this fix disables,
+is designed to compensate for temperature and manufacturing variations. The
+midpoint value selected above is probably around optimal for regular room
+temperature, and a large range of values (0x10 - 0x30) works fine at this
+temperature, so the temperature would likely need to be very extreme for this
+midpoint not to work, e.g. < 0 C or > 60 C. We have not done any serious
+temperature testing, so if you run into stability problems at extreme
+temperatures let us know.
+
+## Technical Explanation
+
+TODO
 
 ## Short description of the bug
 
@@ -79,11 +138,13 @@ manages to hide it.
 
 ### How did you find out about this bug?
 
-We were experimenting with some custom microcode in Tiny3D and
+libdragon developers were experimenting with some custom microcode in Tiny3D and
 libdragon to clear the Z-buffer via the RSP. This requires running RSP DMA
 transfers to RDRAM with the fixed value of 0xFFFC which is the reset value
 for the Z-buffer. During initial development of the feature, we had a fixed
 value of 0xFFFF instead and we started noticing some random crashes.
+
+
 
 ### Does this bug reproduce with official IPL3s from Nintendo?
 
@@ -93,6 +154,3 @@ RDRAM is calibrated and initialized between the two. If this is not a hardware
 bug but rather a RDRAM configuration bug, it must exist in both IPL3s.
 
 ### Does this bug reproduce on all consoles?
-
-It does reproduce on all consoles we tested, so it appears not to be specific
-of regions, or different motherboards.
