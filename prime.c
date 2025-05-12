@@ -13,7 +13,7 @@
 
 static __attribute__((aligned(16))) uint8_t prime_ram[MAX_PRIME_SIZE];
 
-void prime_init(uint8_t device, uint8_t dir, uint32_t size_bytes, uint32_t pattern) {
+void prime_init(uint8_t device, uint8_t dir, uint16_t size_bytes, uint32_t pattern) {
     volatile uint32_t* write_addr;
     if(dir == PRIME_DIR_RDRAM2RCP){
         write_addr = (uint32_t*)prime_ram;
@@ -35,7 +35,7 @@ void prime_init(uint8_t device, uint8_t dir, uint32_t size_bytes, uint32_t patte
     }
 }
 
-void prime_go(uint8_t device, uint8_t dir, uint32_t size_bytes) {
+void prime_go(uint8_t device, uint8_t dir, uint32_t size_bytes, uint32_t count) {
     volatile uint32_t* status_reg;
     uint32_t busy_flags;
     volatile uint32_t* rdram_addr_reg;
@@ -60,11 +60,14 @@ void prime_go(uint8_t device, uint8_t dir, uint32_t size_bytes) {
     
     while(*status_reg & busy_flags);
     
-    *rdram_addr_reg = (uint32_t)prime_ram;
-    *other_addr_reg = other_addr;
-    MEMORY_BARRIER();
-    *sizem1_trigger_reg = size_bytes - 1;
-    MEMORY_BARRIER();
-    
-    while(*status_reg & busy_flags);
+    while(count--){
+        
+        *rdram_addr_reg = (uint32_t)prime_ram;
+        *other_addr_reg = other_addr;
+        MEMORY_BARRIER();
+        *sizem1_trigger_reg = size_bytes - 1;
+        MEMORY_BARRIER();
+        
+        while(*status_reg & busy_flags);
+    }
 }

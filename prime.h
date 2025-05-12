@@ -22,10 +22,10 @@ being passed to prime_go, you don't have to run it before every prime_go.
 For PI, uses the end of a 64 MiB flashcart, which assumes that ROM space is
 writable. Also assumes that size_bytes is a multiple of 8, ram_addr is aligned
 to 16, etc. */
-extern void prime_init(uint8_t device, uint8_t dir, uint32_t size_bytes, uint32_t pattern);
+extern void prime_init(uint8_t device, uint8_t dir, uint16_t size_bytes, uint32_t pattern);
 
 /** Prime the corruption by executing a DMA. Must have been previously
 initialized by prime_init. */
-extern void prime_go(uint8_t device, uint8_t dir, uint32_t size_bytes);
+extern void prime_go(uint8_t device, uint8_t dir, uint32_t size_bytes, uint32_t count);
 
 #endif

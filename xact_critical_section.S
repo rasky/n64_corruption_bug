@@ -52,17 +52,10 @@ shuffle_rdram_cc:
     jr     $ra
      or    $v0, $v0, $t0
 
-write_rcpcc:
-    lui    $v0, 0xA470
-    jr     $ra
-     sw    $a0, (0x0004)($v0) # RI_CONFIG register
-
 # Need to separate this out to ensure we do not use the data cache at all
 # (except in the under-test ways) across trigger_setup, prime_go, and trigger_go.
 .global xact_critical_section
 xact_critical_section:
-    lw $v0, (0x24)($sp)
-    lw $v1, (0x2C)($sp)
     addiu $sp, $sp, -0x48
     sd $s0, (0x00)($sp)
     sd $s1, (0x08)($sp)
@@ -73,37 +66,39 @@ xact_critical_section:
     sd $s6, (0x30)($sp)
     sd $s7, (0x38)($sp)
     sd $ra, (0x40)($sp)
-    move $s0, $a0
-    move $s1, $a1
-    move $s2, $a2
-    move $s3, $a3
-    move $s4, $v0
-    move $s5, $v1
+    move $s0, $a0 # device_dir_tmode
+    move $s1, $a1 # prime_size_count
+    move $s2, $a2 # taddr
+    move $s3, $a3 # rcpcc
+    # s6 = previous rcp_cc
+    # s7 = rdram_cc after prime
 
-    move $a0, $s3
+    andi $a0, $s0, 0xFF # tmode
     jal trigger_setup
-     move $a1, $s4
+     move $a1, $s2 # taddr
 
-    addiu $v0, $s5, -0x0040 # v0 == 0 if auto, v0 < 0 if manual
-    bltzal $v0, write_rcpcc # Only write if manual
-     move $a0, $s5
+    lui $t0, 0xA470
+    lw $s6, (0x0004)($t0) # Save old RI_CONFIG
+    sw $s3, (0x0004)($t0) # Set new
 
-    move $a0, $s0
-    move $a1, $s1
+    srl $a0, $s0, 16
+    andi $a0, $a0, 0xFF # device
+    srl $a1, $s0, 8
+    andi $a1, $a1, 0xFF # dir
+    srl $a2, $s1, 16 # size
     jal prime_go
-     move $a2, $s2
+     andi $a3, $s1, 0xFFFF # count
     
     jal read_rdram_cc
      nop
     move $s7, $v0
     
-    move $a0, $s3
+    andi $a0, $s0, 0xFF # tmode
     jal trigger_go
-     move $a1, $s4
+     move $a1, $s2 # taddr
 
-    addiu $v0, $s5, -0x0040 # v0 == 0 if auto, v0 < 0 if manual
-    bltzal $v0, write_rcpcc # Only write if manual
-     li $a0, 0x0040 # Revert to AutoCC
+    lui $t0, 0xA470
+    sw $s6, (0x0004)($t0) # Restore old RI_CONFIG
 
     jal read_rdram_cc
      nop

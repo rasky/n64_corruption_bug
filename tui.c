@@ -54,14 +54,14 @@ static plot_info_t plot_presets[PLOT_PRESET_COUNT][PLOT_COUNT] = {
         {YAXIS_TEST_FAILURES,  XAXIS_CC_3_TRIGGER, 3, 50, PLOT_FLAG_NOLABELS},
         {YAXIS_TEST_PASSES,    XAXIS_CC_3_TRIGGER, 3, 50},
     }, {
-        {YAXIS_TEST_PASSES,    P_RCPCC,            7, 32},
-        {YAXIS_TEST_FAILURES,  P_RCPCC,            7, 32},
-        {YAXIS_BIT_CLEAR_ADDR, P_RCPCC,            7, 32},
-        {YAXIS_BIT_CLEAR_DATA, P_RCPCC,            7, 32},
-        {YAXIS_BIT_SET_ADDR,   P_RCPCC,            7, 32},
-        {YAXIS_BIT_SET_DATA,   P_RCPCC,            7, 32},
-        {YAXIS_WORD_ZERO,      P_RCPCC,            7, 32},
-        {YAXIS_WORD_UNKNOWN,   P_RCPCC,            7, 32},
+        {YAXIS_TEST_PASSES,    P_RCPCC,            7, RCPCC_COUNT},
+        {YAXIS_TEST_FAILURES,  P_RCPCC,            7, RCPCC_COUNT},
+        {YAXIS_BIT_CLEAR_ADDR, P_RCPCC,            7, RCPCC_COUNT},
+        {YAXIS_BIT_CLEAR_DATA, P_RCPCC,            7, RCPCC_COUNT},
+        {YAXIS_BIT_SET_ADDR,   P_RCPCC,            7, RCPCC_COUNT},
+        {YAXIS_BIT_SET_DATA,   P_RCPCC,            7, RCPCC_COUNT},
+        {YAXIS_WORD_ZERO,      P_RCPCC,            7, RCPCC_COUNT},
+        {YAXIS_WORD_UNKNOWN,   P_RCPCC,            7, RCPCC_COUNT},
     }, 
 };
 static const char* preset_descriptions[PLOT_PRESET_COUNT] = {
@@ -152,12 +152,8 @@ static void tui_render_plots(){
             if(xaxis < XAXIS_MIN){
                 if(param_info[xaxis].value_labels != NULL){
                     snprintf(label_str, 16, "%s", param_info[xaxis].value_labels[datax]);
-                }else if((param_info[xaxis].flags & TEST_FLAG_RCPCC)){
-                    if(datax == 0){
-                        snprintf(label_str, 16, "Auto");
-                    }else{
-                        snprintf(label_str, 16, "%02lX", param_info[xaxis].conversion(datax));
-                    }
+                }else{
+                    snprintf(label_str, 16, "%2ld", param_info[xaxis].conversion(datax));
                 }
             }else{
                 int32_t label = datax;
@@ -263,25 +259,12 @@ static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
         }else{
             bool can_edit_left = param_state[p].selected > 1;
             bool can_edit_right = param_state[p].selected < param_info[p].max;
-            if((param_info[p].flags & TEST_FLAG_RCPCC)){
-                debugf("%c Auto", sel_p && can_edit_left ? '<' : ' ');
-                const int32_t max_show = 5;
-                for(int32_t i=1; i<param_state[p].selected && 
-                        (i < max_show || max_show == param_state[p].selected - 1); ++i){
-                    debugf(", 0x%02lX", param_info[p].conversion(i));
-                }
-                if(param_state[p].selected - 1 > max_show){
-                    debugf(", ..., 0x%02lX", param_info[p].conversion(param_state[p].selected - 1));
-                }
-                debugf(" %c        \n", sel_p && can_edit_right ? '>' : ' ');
-            }else{
-                debugf("%lu to %lu (stop at %c %lu %c)           \n",
-                    param_info[p].conversion(0),
-                    param_info[p].conversion(param_state[p].selected - 1),
-                    sel_p && can_edit_left ? '<' : ' ',
-                    param_info[p].conversion(param_state[p].selected),
-                    sel_p && can_edit_right ? '>' : ' ');
-            }
+            debugf("%lu to %lu (stop at %c %lu %c)           \n",
+                param_info[p].conversion(0),
+                param_info[p].conversion(param_state[p].selected - 1),
+                sel_p && can_edit_left ? '<' : ' ',
+                param_info[p].conversion(param_state[p].selected),
+                sel_p && can_edit_right ? '>' : ' ');
             if(sel_p && press_left && can_edit_left){
                 param_state[p].selected = (param_info[p].flags & TEST_FLAG_EDIT_POWER2) ?
                     param_state[p].selected >> 1 : param_state[p].selected - 1;

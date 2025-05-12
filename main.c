@@ -11,7 +11,10 @@ int main() {
     // exit.
     asm("move $sp, %0" : : "r" (0x8003FFE0));
     
-    // Uncomment this to solve the corruption
+    // Each test switches to a particular CC value during the test and then
+    // switches back to the original value after the test. The bootloader
+    // normally sets the original value to 0x40 (auto); the new "fix" value is
+    // 0x20.
     // *(uint32_t*)0xA4700004 = 0x20;
     
     disable_interrupts();

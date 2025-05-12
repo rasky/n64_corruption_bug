@@ -8,6 +8,12 @@
 #include "tui.h"
 #include "xact_critical_section.h"
 
+static const char* const rcpcc_labels[RCPCC_COUNT] = {
+    "Auto", "20", "21", "1F", "23", "1D", "26", "1A", "2A", "16", "2F", "11"
+};
+static uint8_t rcpcc_values[RCPCC_COUNT] = {
+     0x40, 0x20, 0x21, 0x1F, 0x23, 0x1D, 0x26, 0x1A, 0x2A, 0x16, 0x2F, 0x11
+};
 static const char* const device_labels[PRIME_DEVICE_COUNT] = {"DMEM", "IMEM", "PI"};
 static const char* const dir_labels[PRIME_DIR_COUNT] = {"RDRAM->RCP", "RCP->RDRAM"};
 static const char* const tmode_labels[TRIGGER_MODE_COUNT] = {"DCACHE rd", "DCACHE wrt"};
@@ -21,18 +27,11 @@ uint32_t PrimeSizeConversion(uint32_t in){
 }
 
 uint32_t RcpCcConversion(uint32_t in){
-    // Auto (0x40), 0x20, 0x21, 0x1F, 0x22, 0x1E, ...
-    if(in == 0) return 0x40; // auto
-    int32_t delta = in >> 1;
-    if((in & 1)){
-        return 0x20 - delta;
-    }else{
-        return 0x20 + delta;
-    }
+    return rcpcc_values[in];
 }
 
 const test_param_info_t param_info[P_COUNT] = {
-    {"RCP CC setting", NULL, RcpCcConversion, 32, TEST_FLAG_RCPCC},
+    {"RCP CC setting", rcpcc_labels, RcpCcConversion, RCPCC_COUNT, TEST_FLAG_NONE},
     {"Prime size", NULL, PrimeSizeConversion, 9, TEST_FLAG_NONE},
     {"Zeros in 32b prime pattern", NULL, NullConversion, 33, TEST_FLAG_NONE},
     {"Prime device", device_labels, NullConversion, PRIME_DEVICE_COUNT, TEST_FLAG_NONE},
@@ -154,8 +153,13 @@ void test_main() {
         uint32_t hash = integer_hash(param_state[P_OFFSETS].real);
         uint32_t* taddr = trigger_get_addr(hash);
         prefill_icache();
-        xact_critical_section(param_state[P_DEVICE].real, param_state[P_DIR].real,
-            param_state[P_SIZE].real, param_state[P_TMODE].real, taddr,
+        xact_critical_section(
+            (param_state[P_DEVICE].real << 16)
+            | (param_state[P_DIR].real << 8) 
+            | param_state[P_TMODE].real,
+            (param_state[P_SIZE].real << 16)
+            | 1,
+            taddr,
             param_state[P_RCPCC].real);
         trigger_after(param_state[P_TMODE].real, taddr);
         detect_per_test(taddr);

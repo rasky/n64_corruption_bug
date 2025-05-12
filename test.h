@@ -3,7 +3,6 @@
 
 #define TEST_FLAG_NONE          0
 #define TEST_FLAG_EDIT_POWER2  (1 << 0)
-#define TEST_FLAG_RCPCC        (1 << 1)
 
 typedef uint32_t (*ParamConversionFunc)(uint32_t in);
 
@@ -35,6 +34,8 @@ extern const test_param_info_t param_info[P_COUNT];
 extern test_param_state_t param_state[P_COUNT];
 extern bool test_running;
 extern bool test_all_disabled;
+
+#define RCPCC_COUNT 12
 
 extern uint32_t next_param_value(int32_t p, bool sel, bool edit, bool reverse);
 extern void test_reset();

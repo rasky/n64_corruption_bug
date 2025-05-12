@@ -20,10 +20,10 @@ extern void trigger_init();
 functions. hash is a pseudorandom number to generate an address offset. */
 extern uint32_t* trigger_get_addr(uint32_t hash);
 /** Set up the initial state for triggering, before prime. */
-extern void trigger_setup(uint8_t mode, uint32_t* addr);
+extern void trigger_setup(uint8_t tmode, uint32_t* addr);
 /** Trigger the corruption. */
-extern void trigger_go(uint8_t mode, uint32_t* addr);
+extern void trigger_go(uint8_t tmode, uint32_t* addr);
 /** Things that need to happen after the trigger (e.g. dcache writeback). */
-extern void trigger_after(uint8_t mode, uint32_t* addr);
+extern void trigger_after(uint8_t tmode, uint32_t* addr);
 
 #endif
