@@ -15,10 +15,10 @@ hdr = \
 # Order matters; from test.c through xact_critical_section.S will be in icache
 src = \
   main.c \
-  hashes.c \
   controller.c \
   tui.c \
   test.c \
+  hashes.c \
   prime.c \
   trigger.c \
   detect.c

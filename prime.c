@@ -1,5 +1,6 @@
 #include <libdragon.h>
 #include "prime.h"
+#include "hashes.h"
 
 #define PI_STATUS_DMA_BUSY ( 1 << 0 )
 #define PI_STATUS_IO_BUSY  ( 1 << 1 )
@@ -13,17 +14,20 @@
 
 static __attribute__((aligned(16))) uint8_t prime_ram[MAX_PRIME_SIZE];
 
-void prime_init(uint8_t device, uint8_t dir, uint16_t size_bytes, uint32_t pattern) {
-    volatile uint32_t* write_addr;
+volatile uint32_t* prime_get_src_addr(uint8_t device, uint8_t dir) {
     if(dir == PRIME_DIR_RDRAM2RCP){
-        write_addr = (uint32_t*)prime_ram;
+        return (uint32_t*)prime_ram;
     }else if(device == PRIME_DEVICE_PI){
         while(*PI_STATUS & PI_BUSY_FLAGS);
-        write_addr = (uint32_t*)(FLASHCART_IO_ADDR | 0xA0000000);
+        return (uint32_t*)(FLASHCART_IO_ADDR | 0xA0000000);
     }else{
         while(*SP_STATUS & SP_BUSY_FLAGS);
-        write_addr = SP_DEVICE_TO_ADDR;
+        return SP_DEVICE_TO_ADDR;
     }
+}
+
+void prime_init(uint8_t device, uint8_t dir, uint16_t size_bytes, uint32_t pattern) {
+    volatile uint32_t* write_addr = prime_get_src_addr(device, dir);
     size_bytes &= ~4;
     while(size_bytes > 0){
         *write_addr = pattern;
@@ -31,6 +35,19 @@ void prime_init(uint8_t device, uint8_t dir, uint16_t size_bytes, uint32_t patte
         size_bytes -= 4;
     }
     if(dir == PRIME_DIR_RDRAM2RCP){
+        data_cache_writeback_invalidate_all();
+    }
+}
+
+void prime_check_init(uint8_t device, uint8_t dir, uint16_t size_bytes) {
+    volatile uint32_t* write_addr = prime_get_src_addr(device, !dir);
+    size_bytes &= ~4;
+    while(size_bytes > 0){
+        *write_addr = integer_hash((uint32_t)write_addr);
+        ++write_addr;
+        size_bytes -= 4;
+    }
+    if(dir == PRIME_DIR_RCP2RDRAM){
         data_cache_writeback_invalidate_all();
     }
 }

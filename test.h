@@ -34,6 +34,7 @@ extern const test_param_info_t param_info[P_COUNT];
 extern test_param_state_t param_state[P_COUNT];
 extern bool test_running;
 extern bool test_all_disabled;
+extern bool check_prime;
 
 #define RCPCC_COUNT 12
 

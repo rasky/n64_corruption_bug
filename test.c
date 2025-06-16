@@ -62,6 +62,7 @@ test_param_state_t param_state[P_COUNT] = {
 
 bool test_running = false;
 bool test_all_disabled = false;
+bool check_prime = false;
 
 inline uint32_t has_hit_real_max(int32_t p, uint32_t current){
     return current >= (param_info[p].value_labels != NULL ? 
@@ -143,12 +144,15 @@ void test_main() {
         }
         if(test_all_disabled) continue;
         
+        uint32_t pattern = 0xFFFFFFFF << param_state[P_ZEROS].real;
         if(dir_or_above_changed){
-            uint32_t pattern = 0xFFFFFFFF << param_state[P_ZEROS].real;
             prime_init(param_state[P_DEVICE].real, param_state[P_DIR].real,
                 param_state[P_SIZE].real, pattern);
             dir_or_above_changed = false;
         }
+        
+        if(check_prime) prime_check_init(param_state[P_DEVICE].real,
+            param_state[P_DIR].real, param_state[P_SIZE].real);
         
         uint32_t hash = integer_hash(param_state[P_OFFSETS].real);
         uint32_t* taddr = trigger_get_addr(hash);
@@ -163,6 +167,8 @@ void test_main() {
             param_state[P_RCPCC].real);
         trigger_after(param_state[P_TMODE].real, taddr);
         detect_per_test(taddr);
+        if(check_prime) prime_check(param_state[P_DEVICE].real,
+            param_state[P_DIR].real, param_state[P_SIZE].real, pattern);
         
         // If this is the end of the set of write mode tests (even if the next
         // set of tests is also write mode because read mode is disabled), check

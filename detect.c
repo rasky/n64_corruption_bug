@@ -2,6 +2,7 @@
 #include "detect.h"
 
 #include "hashes.h"
+#include "prime.h"
 #include "test.h"
 #include "trigger.h"
 
@@ -12,6 +13,9 @@ const char* yaxis_labels[YAXIS_COUNT] = {
     "Any corrupted words",
     "Zero words",
     "Unknown corrupted words",
+    "Any corrupted prime wds",
+    "Unwritten prime words",
+    "Unknown crptd prime wds",
     "Address bit clears",
     "Data bit clears",
     "Address bit sets",
@@ -21,6 +25,7 @@ const char* xaxis_labels[XAXIS_COUNT - XAXIS_MIN] = {
     "Bit in word",
     "Word in cacheline",
     "Cacheline in buffer",
+    "Pos in prime buffer",
     "RDRAM module 0 CC after prime",
     "RDRAM module 1 CC after prime",
     "RDRAM module 2 CC after prime",
@@ -69,6 +74,13 @@ static void record_event(uint8_t yaxis) {
             if(dstate.end - dstate.start > (DCACHE_SIZE_BYTES >> 2)) continue;
             x = (dstate.a - dstate.start) >> 2;
             if(x >= PLOT_MAX_X) x = PLOT_MAX_X - 1;
+        }else if(xaxis == XAXIS_PBUF_POS){
+            int32_t size = dstate.end - dstate.start;
+            if(size == 0){
+                x = 0;
+            }else{
+                x = ((dstate.a - dstate.start) * PLOT_MAX_X) / size;
+            }
         }else if(xaxis >= XAXIS_CC_0_PRIME && xaxis <= XAXIS_CC_3_TRIGGER){
             x = (xaxis >= XAXIS_CC_0_TRIGGER) ? dstate.cc_after_trigger : dstate.cc_after_prime;
             x = (x >> ((3 - ((xaxis - XAXIS_CC_0_TRIGGER) & 3)) << 3)) & 0xFF;
@@ -151,4 +163,25 @@ void detect_full_scan() {
     // This only applies to TRIGGER_DCACHE_WRITE.
     bool errored = check_area(most_of_dram, most_of_dram_end);
     if(errored) record_event(YAXIS_TEST_FAILURES);
+}
+
+void prime_check(uint8_t device, uint8_t dir, uint32_t size_bytes, uint32_t pattern) {
+    volatile uint32_t* dest_addr = prime_get_src_addr(device, !dir);
+    volatile uint32_t* dest_end = dest_addr + (size_bytes >> 2);
+    dstate.start = (uint32_t*)dest_addr;
+    dstate.end = (uint32_t*)dest_end;
+    dstate.dword = 0;
+    
+    for(volatile uint32_t* a = dest_addr; a < dest_end; ++a){
+        uint32_t actual = *a;
+        if(actual != pattern){
+            dstate.a = (uint32_t*)a;
+            record_event(YAXIS_PWORD_ANY);
+            if(actual == integer_hash((uint32_t)a)){
+                record_event(YAXIS_PWORD_UNWRIT);
+            }else{
+                record_event(YAXIS_PWORD_UNKNOWN);
+            }
+        }
+    }
 }

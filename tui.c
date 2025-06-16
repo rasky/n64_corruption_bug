@@ -62,13 +62,20 @@ static plot_info_t plot_presets[PLOT_PRESET_COUNT][PLOT_COUNT] = {
         {YAXIS_BIT_SET_DATA,   P_RCPCC,            7, RCPCC_COUNT},
         {YAXIS_WORD_ZERO,      P_RCPCC,            7, RCPCC_COUNT},
         {YAXIS_WORD_UNKNOWN,   P_RCPCC,            7, RCPCC_COUNT},
-    }, 
+    }, {
+        {YAXIS_PWORD_UNWRIT,   XAXIS_PBUF_POS,     6, 50},
+        {YAXIS_PWORD_UNKNOWN,  XAXIS_PBUF_POS,     6, 50},
+        {YAXIS_PWORD_ANY,      P_DEVICE,           32, 3},
+        {YAXIS_PWORD_ANY,      P_DIR,              32, 2},
+        {YAXIS_PWORD_ANY,      P_TMODE,            32, 2},
+    }
 };
 static const char* preset_descriptions[PLOT_PRESET_COUNT] = {
     "Failure types",
     "Failure locations",
     "Current control",
     "RCP current control",
+    "Prime failures",
 };
 
 static uint8_t sel_preset = 0;
@@ -275,8 +282,19 @@ static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
             }
         }
     }
+    #define CURSOR_BASE P_COUNT
     {
-        bool sel_p = cursor_p == P_COUNT;
+        bool sel_p = cursor_p == CURSOR_BASE;
+        debugf("\nCheck prime %c %s %c  \n",
+            sel_p ? '<' : ' ',
+            check_prime ? "true" : "false",
+            sel_p ? '>' : ' ');
+        if(sel_p && (press_left || press_right)) check_prime = !check_prime;
+    }
+    #undef CURSOR_BASE
+    #define CURSOR_BASE (P_COUNT + 1)
+    {
+        bool sel_p = cursor_p == CURSOR_BASE;
         bool can_left = sel_p && sel_preset > 0;
         bool can_right = sel_p && sel_preset < PLOT_PRESET_COUNT - 1;
         debugf("\n%c Plot presets: %c %s %c  %s                      \n",
@@ -289,13 +307,15 @@ static void tui_render_setup(uint16_t buttons, uint16_t buttons_press) {
         if(can_left && press_left) --sel_preset;
         if(sel_p && (buttons_press & BTN_A)) apply_preset();
     }
-    if(cursor_p >= P_COUNT + 1){
+    #undef CURSOR_BASE
+    #define CURSOR_BASE (P_COUNT + 2)
+    if(cursor_p >= CURSOR_BASE){
         debugf("(Edit with C^ / Cv)\n");
     }else{
         debugf("                   \n");
     }
     for(int32_t p=0; p<PLOT_COUNT; ++p){
-        bool sel_p = (cursor_p - (P_COUNT + 1)) == p;
+        bool sel_p = (cursor_p - CURSOR_BASE) == p;
         debugf("%c %c%23s%c",
             sel_p ? '>' : ' ',
             sel_p && cursor_v == 0 ? '>' : ' ',
